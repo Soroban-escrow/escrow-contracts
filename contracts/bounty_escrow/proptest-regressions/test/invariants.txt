@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 16db01404364d9ee1f156880e895ae333065a7d27ba618101a7a9281dfcab585 # shrinks to ops = [Fund { issue: 0, units: 1, tok: false, relayer: false }]
