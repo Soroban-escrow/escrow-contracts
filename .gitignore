@@ -2,3 +2,4 @@ target/
 test_snapshots/
 .env*
 *.secret
+.DS_Store
