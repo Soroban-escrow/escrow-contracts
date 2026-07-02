@@ -6,10 +6,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: rustup show
+      - run: cargo install --locked stellar-cli --version 28.1.0
+      # the upgrade test embeds the built wasm, so build before fmt/clippy/test
+      - run: ./scripts/build.sh
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo install --locked stellar-cli --version 28.1.0
-      - run: ./scripts/build.sh
       - run: cargo test
   audit:
     runs-on: ubuntu-latest

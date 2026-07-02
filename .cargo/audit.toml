@@ -1,0 +1,4 @@
+[advisories]
+# RUSTSEC-2026-0387: crypto-bigint 0.5.5, reached only through soroban-env-host's test host.
+# It is not in the deployed wasm and cannot be bumped until upstream moves. Re-check on each soroban-sdk upgrade.
+ignore = ["RUSTSEC-2026-0387"]
