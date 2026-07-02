@@ -6,7 +6,12 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: rustup show
-      - run: cargo install --locked stellar-cli --version 28.1.0
+      - name: stellar-cli 28.1.0 (prebuilt, checksum verified)
+        run: |
+          curl -sSfL -o stellar.tgz https://github.com/stellar/stellar-cli/releases/download/v28.1.0/stellar-cli-28.1.0-x86_64-unknown-linux-gnu.tar.gz
+          echo "c1680deee94301d33ada7a17f98411e642a4248c727afbd2e43050d345746462  stellar.tgz" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin" && tar xzf stellar.tgz -C "$HOME/.local/bin" stellar
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       # the upgrade test embeds the built wasm, so build before fmt/clippy/test
       - run: ./scripts/build.sh
       - run: cargo fmt --check
