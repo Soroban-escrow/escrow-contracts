@@ -228,3 +228,25 @@ fn setters_emit_events() {
     c.client.unpause(&c.admin);
     assert!(!c.client.get_config().paused);
 }
+
+const WASM: &[u8] = include_bytes!("../../../../target/wasm32v1-none/release/bounty_escrow.wasm");
+
+#[test]
+fn upgrade_swaps_the_code_and_keeps_state() {
+    let c = Ctx::new();
+    let id = c.fund(1);
+    let hash = c.env.deployer().upload_contract_wasm(WASM);
+    c.client.upgrade(&c.admin, &hash);
+    // state survives and the (same) code still answers
+    assert_eq!(c.client.get_bounty(&id).amount, 100 * UNIT);
+    assert_eq!(c.client.get_config().admin, c.admin);
+    c.client.release(&c.maintainer, &id, &c.winner);
+}
+
+#[test]
+fn upgrade_requires_admin_signature() {
+    let c = Ctx::new();
+    let hash = c.env.deployer().upload_contract_wasm(WASM);
+    c.env.set_auths(&[]);
+    assert!(c.client.try_upgrade(&c.admin, &hash).is_err());
+}

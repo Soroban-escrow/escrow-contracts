@@ -184,7 +184,7 @@ impl BountyEscrow {
                 return Err(Error::RelayerNotAllowed);
             }
         }
-        if winner == b.maintainer {
+        if winner == b.maintainer || winner == env.current_contract_address() {
             return Err(Error::SelfPayout);
         }
         let fee = fees::fee(b.amount, b.fee_bps)?;
@@ -300,7 +300,9 @@ impl BountyEscrow {
         if winner_bps > 0 {
             match &winner {
                 None => return Err(Error::InvalidSplit),
-                Some(w) if *w == b.maintainer => return Err(Error::SelfPayout),
+                Some(w) if *w == b.maintainer || *w == env.current_contract_address() => {
+                    return Err(Error::SelfPayout)
+                }
                 Some(_) => {}
             }
             fee = fees::fee(portion, b.fee_bps)?;

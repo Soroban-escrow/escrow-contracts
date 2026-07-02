@@ -109,3 +109,12 @@ fn zero_fee_pays_treasury_nothing() {
     assert_eq!(c.bal(&c.token, &c.treasury), 0);
     assert_eq!(c.bal(&c.token, &c.winner), 100 * UNIT);
 }
+
+#[test]
+fn contract_address_as_winner_rejected() {
+    let c = Ctx::new();
+    let id = c.fund(1);
+    let r = c.client.try_release(&c.maintainer, &id, &c.client.address);
+    assert_eq!(r.unwrap_err().unwrap(), Error::SelfPayout);
+    assert_eq!(c.contract_bal(&c.token), 100 * UNIT);
+}

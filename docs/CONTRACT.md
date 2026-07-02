@@ -10,7 +10,7 @@ Soroban escrow for GitHub issue bounties. soroban-sdk 29.0.1, target `wasm32v1-n
 |---|---|---|
 | `init(admin, relayer, arbiter, treasury, fee_bps, grace_secs, min_dur, max_dur)` | admin | once (`AlreadyInitialized`); `fee_bps <= 1000` (`InvalidFee`); `min <= max` (`InvalidDeadline`) |
 | `fund_bounty(maintainer, repo_id, issue, token, amount, deadline, relayer_allowed) -> id` | maintainer | `Paused`, `TokenNotAllowed`, `AmountTooSmall/Large`, `InvalidDeadline`, `IssueAlreadyFunded`. Fee bps snapshotted. |
-| `release(caller, id, winner)` | maintainer, or relayer if `relayer_allowed` | `InvalidStatus`, `Unauthorized`, `RelayerNotAllowed`, `SelfPayout`. Allowed after deadline until refunded. Pays `amount - fee` to winner, `fee` to treasury. |
+| `release(caller, id, winner)` | maintainer, or relayer if `relayer_allowed` | `InvalidStatus`, `Unauthorized`, `RelayerNotAllowed`, `SelfPayout` (winner is the maintainer or the contract itself). Allowed after deadline until refunded. Pays `amount - fee` to winner, `fee` to treasury. |
 | `refund(maintainer, id)` | maintainer | only at/after `deadline + grace` (`DeadlineNotReached`); full amount, no fee; works while paused |
 | `open_dispute(caller, id)` | maintainer or arbiter | Open only; freezes release and refund |
 | `resolve(arbiter, id, winner: Option, winner_bps)` | arbiter | Disputed only. `portion = floor(amount*bps/10000)`, fee taken from portion, remainder to maintainer. `InvalidSplit`, `SelfPayout`. Works while paused. |
@@ -42,4 +42,4 @@ Ledgers are ~5 s (17,280/day). Persistent entries and the instance are extended 
 - Pausing never traps funds: refund and resolve keep working.
 
 ## Known gaps
-No test of a successful `upgrade`; `release`/`resolve` accept the contract's own address as winner.
+`upgrade` test needs the wasm built first (`./scripts/build.sh` before `cargo test`, as CI does).

@@ -172,3 +172,13 @@ fn resolve_twice_rejected() {
     let r = c.client.try_resolve(&c.arbiter, &id, &None, &0);
     assert_eq!(r.unwrap_err().unwrap(), Error::InvalidStatus);
 }
+
+#[test]
+fn resolve_winner_is_contract_rejected() {
+    let c = Ctx::new();
+    let id = disputed(&c);
+    let r = c
+        .client
+        .try_resolve(&c.arbiter, &id, &Some(c.client.address.clone()), &5_000);
+    assert_eq!(r.unwrap_err().unwrap(), Error::SelfPayout);
+}

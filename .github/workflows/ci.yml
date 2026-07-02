@@ -8,9 +8,9 @@ jobs:
       - run: rustup show
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
       - run: cargo install --locked stellar-cli --version 28.1.0
       - run: ./scripts/build.sh
+      - run: cargo test
   audit:
     runs-on: ubuntu-latest
     steps:
