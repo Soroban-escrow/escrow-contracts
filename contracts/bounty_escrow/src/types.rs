@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address};
+use soroban_sdk::{contracttype, Address, BytesN};
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -32,6 +32,41 @@ pub struct Bounty {
 pub struct TokenLimits {
     pub min_amount: i128,
     pub max_amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WinnerShare {
+    pub winner: Address,
+    pub share_bps: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SplitPayout {
+    pub winner: Address,
+    pub amount: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RelayerLimit {
+    pub window_secs: u64,
+    pub cap: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RelayerUsage {
+    pub window_start: u64,
+    pub released: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingUpgrade {
+    pub wasm_hash: BytesN<32>,
+    pub eta: u64,
 }
 
 #[contracttype]
@@ -114,4 +149,8 @@ pub enum DataKey {
     Claim(u64),
     /// Sum of unclaimed winner credits per token. `held + claimable == balance`.
     ClaimableTotal(Address),
+    RelayerLimit(Address),
+    RelayerUsage(Address),
+    UpgradeDelay,
+    PendingUpgrade,
 }

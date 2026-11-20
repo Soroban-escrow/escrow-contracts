@@ -7,7 +7,7 @@ use soroban_sdk::{
 };
 
 use super::setup::*;
-use crate::{BountyEscrow, BountyEscrowClient, Error};
+use crate::{BountyEscrow, BountyEscrowClient, DataKey, Error, TokenLimits};
 
 #[test]
 fn init_once() {
@@ -312,7 +312,7 @@ fn all_setters_require_admin() {
     assert_eq!(c.client.try_unpause(&x).unwrap_err().unwrap(), e);
     assert_eq!(
         c.client
-            .try_upgrade(&x, &BytesN::from_array(&c.env, &[0; 32]))
+            .try_propose_upgrade(&x, &BytesN::from_array(&c.env, &[0; 32]))
             .unwrap_err()
             .unwrap(),
         e
@@ -344,7 +344,13 @@ fn upgrade_swaps_the_code_and_keeps_state() {
     let c = Ctx::new();
     let id = c.fund(1);
     let hash = c.env.deployer().upload_contract_wasm(WASM);
-    c.client.upgrade(&c.admin, &hash);
+    c.client.propose_upgrade(&c.admin, &hash);
+    assert_eq!(
+        c.client.try_execute_upgrade(&c.admin).unwrap_err().unwrap(),
+        Error::UpgradeNotReady
+    );
+    c.set_time(c.now() + 90 * DAY + GRACE);
+    c.client.execute_upgrade(&c.admin);
     // state survives and the (same) code still answers
     assert_eq!(c.client.get_bounty(&id).amount, 100 * UNIT);
     assert_eq!(c.client.get_config().admin, c.admin);
@@ -356,5 +362,45 @@ fn upgrade_requires_admin_signature() {
     let c = Ctx::new();
     let hash = c.env.deployer().upload_contract_wasm(WASM);
     c.env.set_auths(&[]);
-    assert!(c.client.try_upgrade(&c.admin, &hash).is_err());
+    assert!(c.client.try_propose_upgrade(&c.admin, &hash).is_err());
+}
+
+#[test]
+fn upgrade_can_be_replaced_cancelled_and_delay_only_increased() {
+    let c = Ctx::new();
+    let first = BytesN::from_array(&c.env, &[1; 32]);
+    let second = BytesN::from_array(&c.env, &[2; 32]);
+    c.client.propose_upgrade(&c.admin, &first);
+    c.client.propose_upgrade(&c.admin, &second);
+    c.client.cancel_upgrade(&c.admin);
+    assert_eq!(
+        c.client.try_execute_upgrade(&c.admin).unwrap_err().unwrap(),
+        Error::NoPendingUpgrade
+    );
+    c.client.set_upgrade_delay(&c.admin, &(100 * DAY + GRACE));
+    assert_eq!(
+        c.client
+            .try_set_upgrade_delay(&c.admin, &(90 * DAY))
+            .unwrap_err()
+            .unwrap(),
+        Error::UpgradeDelayCannotDecrease
+    );
+}
+
+#[test]
+fn legacy_instance_token_is_read_until_rewritten_to_persistent_storage() {
+    let c = Ctx::new();
+    let legacy = Address::generate(&c.env);
+    c.env.as_contract(&c.client.address, || {
+        c.env.storage().instance().set(
+            &DataKey::Token(legacy.clone()),
+            &TokenLimits {
+                min_amount: 1,
+                max_amount: UNIT,
+            },
+        );
+    });
+    assert_eq!(c.client.get_token(&legacy).unwrap().max_amount, UNIT);
+    c.client.set_token(&c.admin, &legacy, &2, &(2 * UNIT));
+    assert_eq!(c.client.get_token(&legacy).unwrap().min_amount, 2);
 }

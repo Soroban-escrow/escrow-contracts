@@ -25,6 +25,11 @@ pub fn portion(amount: i128, winner_bps: u32) -> Result<i128, Error> {
     mul_div(amount, winner_bps)
 }
 
+/// floor(net * share_bps / 10_000); split callers assign remaining dust explicitly.
+pub fn share(net: i128, share_bps: u32) -> Result<i128, Error> {
+    mul_div(net, share_bps)
+}
+
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,

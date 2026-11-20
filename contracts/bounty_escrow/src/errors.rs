@@ -29,6 +29,9 @@ pub enum Error {
     AlreadyClaimed = 22,
     /// The arbiter named itself or the treasury as the resolution winner.
     ConflictOfInterest = 23,
-    /// The token credited a different amount than requested (fee-on-transfer or non-standard token).
-    UnexpectedTransferAmount = 24,
+    RelayerLimitExceeded = 24,
+    InvalidWinners = 25,
+    UpgradeNotReady = 26,
+    NoPendingUpgrade = 27,
+    UpgradeDelayCannotDecrease = 28,
 }

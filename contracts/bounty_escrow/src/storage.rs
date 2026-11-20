@@ -1,7 +1,10 @@
 use soroban_sdk::{Address, Env};
 
 use crate::errors::Error;
-use crate::types::{Bounty, ClaimRecord, Config, DataKey, DisputeRecord, TokenLimits, Totals};
+use crate::types::{
+    Bounty, ClaimRecord, Config, DataKey, DisputeRecord, PendingUpgrade, RelayerLimit,
+    RelayerUsage, TokenLimits, Totals,
+};
 
 // Ledgers close about every 5 s: 17_280 per day. Testnet max entry TTL is
 // 3_110_400 ledgers (180 d). Worst case a bounty must live is
@@ -44,19 +47,25 @@ pub fn next_id(env: &Env) -> Result<u64, Error> {
 }
 
 pub fn get_token(env: &Env, token: &Address) -> Option<TokenLimits> {
-    env.storage().instance().get(&DataKey::Token(token.clone()))
+    let key = DataKey::Token(token.clone());
+    if let Some(value) = env.storage().persistent().get(&key) {
+        bump_persistent(env, &key);
+        return Some(value);
+    }
+    env.storage().instance().get(&key)
 }
 
 pub fn set_token(env: &Env, token: &Address, l: &TokenLimits) {
-    env.storage()
-        .instance()
-        .set(&DataKey::Token(token.clone()), l);
+    let key = DataKey::Token(token.clone());
+    env.storage().persistent().set(&key, l);
+    bump_persistent(env, &key);
+    env.storage().instance().remove(&key);
 }
 
 pub fn remove_token(env: &Env, token: &Address) {
-    env.storage()
-        .instance()
-        .remove(&DataKey::Token(token.clone()));
+    let key = DataKey::Token(token.clone());
+    env.storage().persistent().remove(&key);
+    env.storage().instance().remove(&key);
 }
 
 fn bump_persistent(env: &Env, key: &DataKey) {
@@ -197,4 +206,61 @@ pub fn set_claimable_total(env: &Env, token: &Address, v: i128) {
     let key = DataKey::ClaimableTotal(token.clone());
     env.storage().persistent().set(&key, &v);
     bump_persistent(env, &key);
+}
+
+pub fn get_relayer_limit(env: &Env, token: &Address) -> Option<RelayerLimit> {
+    let key = DataKey::RelayerLimit(token.clone());
+    let value = env.storage().persistent().get(&key);
+    if value.is_some() {
+        bump_persistent(env, &key);
+    }
+    value
+}
+
+pub fn set_relayer_limit(env: &Env, token: &Address, limit: &RelayerLimit) {
+    let key = DataKey::RelayerLimit(token.clone());
+    env.storage().persistent().set(&key, limit);
+    bump_persistent(env, &key);
+}
+
+pub fn get_relayer_usage(env: &Env, token: &Address) -> RelayerUsage {
+    let key = DataKey::RelayerUsage(token.clone());
+    let value = env.storage().persistent().get(&key);
+    if value.is_some() {
+        bump_persistent(env, &key);
+    }
+    value.unwrap_or_default()
+}
+
+pub fn set_relayer_usage(env: &Env, token: &Address, usage: &RelayerUsage) {
+    let key = DataKey::RelayerUsage(token.clone());
+    env.storage().persistent().set(&key, usage);
+    bump_persistent(env, &key);
+}
+
+pub fn upgrade_delay(env: &Env, fallback: u64) -> u64 {
+    env.storage()
+        .instance()
+        .get(&DataKey::UpgradeDelay)
+        .unwrap_or(fallback)
+}
+
+pub fn set_upgrade_delay(env: &Env, delay: u64) {
+    env.storage().instance().set(&DataKey::UpgradeDelay, &delay);
+    bump_instance(env);
+}
+
+pub fn pending_upgrade(env: &Env) -> Option<PendingUpgrade> {
+    env.storage().instance().get(&DataKey::PendingUpgrade)
+}
+
+pub fn set_pending_upgrade(env: &Env, pending: &PendingUpgrade) {
+    env.storage()
+        .instance()
+        .set(&DataKey::PendingUpgrade, pending);
+    bump_instance(env);
+}
+
+pub fn clear_pending_upgrade(env: &Env) {
+    env.storage().instance().remove(&DataKey::PendingUpgrade);
 }

@@ -136,6 +136,7 @@ Example: `FEE_BPS=500 GRACE_SECS=86400 ./scripts/deploy-testnet.sh`
 |---|---|---|
 | `fund_bounty(maintainer, repo_id, issue, token, amount, deadline, relayer_allowed) -> id` | maintainer | Not paused · token allowlisted · `min ≤ amount ≤ max` · deadline within the allowed window · **no active bounty already on this issue**. Snapshots the current fee. |
 | `release(caller, bounty_id, winner)` | maintainer, **or** the relayer if `relayer_allowed` | Status is `Open` · the winner is neither the maintainer nor the contract itself. Allowed *after* the deadline too, as long as no refund has happened. |
+| `release_split(caller, bounty_id, winners)` | same as `release` | 1–5 unique winners; shares total 10,000 bps. One fee is charged and rounding dust goes to the first winner. |
 | `refund(maintainer, bounty_id)` | maintainer only | Status is `Open` · `now ≥ deadline + grace`. Returns the full amount, **no fee**. Works while paused. |
 | `open_dispute(caller, bounty_id)` | maintainer or arbiter | Status is `Open`. Freezes release *and* refund. |
 | `resolve(arbiter, bounty_id, winner, winner_bps)` | arbiter only | Status is `Disputed` · `winner_bps ≤ 10000` · a winner is required when `winner_bps > 0`. Works while paused. If the winner's transfer fails (for example, no trustline), the net becomes a claim instead of reverting. |
@@ -152,7 +153,8 @@ Example: `FEE_BPS=500 GRACE_SECS=86400 ./scripts/deploy-testnet.sh`
 ### Administration
 
 `init` · `set_token` · `remove_token` · `set_fee` · `set_relayer` · `set_arbiter` · `set_treasury` ·
-`set_grace` · `set_durations` · `set_admin` · `pause` · `unpause` · `upgrade`
+`set_grace` · `set_durations` · `set_relayer_limit` · `set_admin` · `pause` · `unpause` ·
+`propose_upgrade` · `execute_upgrade` · `cancel_upgrade`
 
 `set_admin` requires **both** the current and the incoming admin to sign, so a typo cannot lock the
 contract. `pause` blocks `fund_bounty` and nothing else.
@@ -226,8 +228,8 @@ Stated plainly, because an escrow contract is only as honest as its documentatio
 
 | Role | Power | Bound by |
 |---|---|---|
-| **Admin** | Changes config, pauses funding, and **can upgrade the contract code** — so in effect controls escrowed funds | Nothing in the contract. **Must become a multisig before mainnet.** |
-| **Relayer** | Releases bounties automatically when a PR is merged | Only bounties where the maintainer set `relayer_allowed`; only to a non-maintainer address; bounded by the per-token `max_amount` |
+| **Admin** | Changes config, pauses funding, and proposes contract upgrades | Upgrades wait at least `max_duration + grace`; the delay can only increase. **Must still become a multisig before mainnet.** |
+| **Relayer** | Releases bounties automatically when a PR is merged | Only opted-in bounties; optional rolling per-token release cap; maintainer releases bypass the cap |
 | **Arbiter** | Opens a dispute on any `Open` bounty and splits it | Cannot touch an undisputed bounty; splits are capped at 100% |
 | **Maintainer** | Funds, releases, refunds, disputes | Cannot pay themselves; cannot refund before `deadline + grace` |
 
@@ -298,7 +300,7 @@ The clippy lint set (`arithmetic_side_effects`, the `cast_*` lints, `unwrap_used
 Run `scripts/deploy-mainnet.sh --dry-run` first. It enforces the items marked **check**; the rest are manual.
 
 - [ ] **External audit.** This contract has not had one. *(manual)*
-- [ ] Admin moved to a multisig account, since it can upgrade the code. *(check: admin is a multisig)*
+- [ ] Admin moved to a multisig account and the upgrade delay is long enough for users to exit. *(check: admin is a multisig)*
 - [ ] Per-token `max_amount` starting at 500 USDC. *(check: MAX_AMOUNT within cap)*
 - [ ] USDC contract id verified against Circle's own documentation. *(check: MAINNET_USDC matches the derived id; the issuer constant itself is manual)*
 - [ ] Admin, arbiter, treasury and relayer are four different accounts. *(check)*

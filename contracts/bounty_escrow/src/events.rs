@@ -1,4 +1,6 @@
-use soroban_sdk::{contractevent, Address, BytesN, Symbol};
+use soroban_sdk::{contractevent, Address, BytesN, Symbol, Vec};
+
+use crate::types::SplitPayout;
 
 #[contractevent(topics = ["bounty", "funded"])]
 pub struct Funded {
@@ -24,6 +26,15 @@ pub struct Released {
     pub caller: Address,
     /// True when the winner could not be paid now and the net is claimable later.
     pub deferred: bool,
+}
+
+#[contractevent(topics = ["bounty", "released_split"])]
+pub struct ReleasedSplit {
+    #[topic]
+    pub id: u64,
+    pub payouts: Vec<SplitPayout>,
+    pub fee: i128,
+    pub caller: Address,
 }
 
 #[contractevent(topics = ["bounty", "refunded"])]
@@ -79,6 +90,17 @@ pub struct Unpaused {}
 
 #[contractevent(topics = ["bounty", "upgraded"])]
 pub struct Upgraded {
+    pub wasm_hash: BytesN<32>,
+}
+
+#[contractevent(topics = ["bounty", "upgrade_proposed"])]
+pub struct UpgradeProposed {
+    pub wasm_hash: BytesN<32>,
+    pub eta: u64,
+}
+
+#[contractevent(topics = ["bounty", "upgrade_cancelled"])]
+pub struct UpgradeCancelled {
     pub wasm_hash: BytesN<32>,
 }
 

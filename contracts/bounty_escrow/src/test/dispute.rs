@@ -215,9 +215,9 @@ fn resolve_with_evidence_pays_out_and_records_the_hash() {
     let hash = BytesN::from_array(&c.env, &[7u8; 32]);
     c.client
         .resolve_with_evidence(&c.arbiter, &id, &Some(c.winner.clone()), &10_000, &hash);
+    assert_eq!(c.client.get_bounty(&id).status, Status::Resolved);
 
-    // Events of the last invocation: the evidence record comes last. Read them before any other call,
-    // since `events().all()` only holds the most recent invocation's events.
+    // Events of the last invocation: the evidence record comes last.
     let all = c.env.events().all();
     let events = all.events();
     let expected = EvidenceRecorded {
@@ -229,7 +229,6 @@ fn resolve_with_evidence_pays_out_and_records_the_hash() {
         events.last().unwrap(),
         &expected.to_xdr(&c.env, &c.client.address)
     );
-    assert_eq!(c.client.get_bounty(&id).status, Status::Resolved);
 }
 
 #[test]
