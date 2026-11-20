@@ -217,7 +217,7 @@ impl BountyEscrow {
     ) -> Result<(), Error> {
         caller.require_auth();
         let cfg = storage::get_config(&env)?;
-        let mut b = storage::get_bounty(&env, bounty_id)?;
+        let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
         if b.status != Status::Open {
             return Err(Error::InvalidStatus);
         }
@@ -237,7 +237,7 @@ impl BountyEscrow {
 
         b.status = Status::Released;
         b.winner = Some(winner.clone());
-        storage::set_bounty(&env, &b);
+        storage::set_bounty_state(&env, &b);
         storage::clear_active(&env, b.repo_id, b.issue);
 
         let tok = token::Client::new(&env, &b.token);
@@ -284,7 +284,7 @@ impl BountyEscrow {
     pub fn refund(env: Env, maintainer: Address, bounty_id: u64) -> Result<(), Error> {
         maintainer.require_auth();
         let cfg = storage::get_config(&env)?;
-        let mut b = storage::get_bounty(&env, bounty_id)?;
+        let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
         if maintainer != b.maintainer {
             return Err(Error::Unauthorized);
         }
@@ -299,7 +299,7 @@ impl BountyEscrow {
             return Err(Error::DeadlineNotReached);
         }
         b.status = Status::Refunded;
-        storage::set_bounty(&env, &b);
+        storage::set_bounty_state(&env, &b);
         storage::clear_active(&env, b.repo_id, b.issue);
         let mut t = storage::get_totals(&env, &b.token);
         t.refunded = add(t.refunded, b.amount)?;
@@ -322,7 +322,7 @@ impl BountyEscrow {
     pub fn open_dispute(env: Env, caller: Address, bounty_id: u64) -> Result<(), Error> {
         caller.require_auth();
         let cfg = storage::get_config(&env)?;
-        let mut b = storage::get_bounty(&env, bounty_id)?;
+        let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
         if caller != b.maintainer && caller != cfg.arbiter {
             return Err(Error::Unauthorized);
         }
@@ -341,7 +341,7 @@ impl BountyEscrow {
             },
         );
         b.status = Status::Disputed;
-        storage::set_bounty(&env, &b);
+        storage::set_bounty_state(&env, &b);
         events::Disputed {
             id: bounty_id,
             caller,
@@ -396,7 +396,7 @@ impl BountyEscrow {
     ) -> Result<(), Error> {
         maintainer.require_auth();
         let cfg = storage::get_config(&env)?;
-        let mut b = storage::get_bounty(&env, bounty_id)?;
+        let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
         if maintainer != b.maintainer {
             return Err(Error::Unauthorized);
         }
@@ -433,7 +433,7 @@ impl BountyEscrow {
         if cfg.paused {
             return Err(Error::Paused);
         }
-        let mut b = storage::get_bounty(&env, bounty_id)?;
+        let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
         if maintainer != b.maintainer {
             return Err(Error::Unauthorized);
         }
@@ -481,7 +481,7 @@ impl BountyEscrow {
     /// cannot be disputed again. Callable by anyone once the timeout has passed.
     pub fn expire_dispute(env: Env, caller: Address, bounty_id: u64) -> Result<(), Error> {
         caller.require_auth();
-        let mut b = storage::get_bounty(&env, bounty_id)?;
+        let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
         if b.status != Status::Disputed {
             return Err(Error::InvalidStatus);
         }
@@ -494,7 +494,7 @@ impl BountyEscrow {
             return Err(Error::DisputeNotExpired);
         }
         b.status = Status::Open;
-        storage::set_bounty(&env, &b);
+        storage::set_bounty_state(&env, &b);
         events::DisputeExpired { id: bounty_id }.publish(&env);
         Ok(())
     }
@@ -509,7 +509,7 @@ impl BountyEscrow {
         if record.winner != winner {
             return Err(Error::Unauthorized);
         }
-        let b = storage::get_bounty(&env, bounty_id)?;
+        let b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
         record.claimed = true;
         storage::set_claim(&env, bounty_id, &record);
         undefer(&env, &b.token, record.net)?;
@@ -532,7 +532,12 @@ impl BountyEscrow {
     }
 
     pub fn get_bounty(env: Env, id: u64) -> Result<Bounty, Error> {
-        storage::get_bounty(&env, id)
+        storage::get_bounty(&env, id).ok_or(Error::BountyNotFound)
+    }
+
+    /// Returns the active bounty for an issue without extending any storage TTL.
+    pub fn get_bounty_by_issue(env: Env, repo_id: u64, issue: u64) -> Option<Bounty> {
+        storage::get_bounty_by_issue(&env, repo_id, issue)
     }
 
     pub fn active_bounty(env: Env, repo_id: u64, issue: u64) -> Option<u64> {
@@ -708,7 +713,7 @@ fn settle(
     if arbiter != cfg.arbiter {
         return Err(Error::Unauthorized);
     }
-    let mut b = storage::get_bounty(env, bounty_id)?;
+    let mut b = storage::get_bounty(env, bounty_id).ok_or(Error::BountyNotFound)?;
     if b.status != Status::Disputed {
         return Err(Error::InvalidStatus);
     }
@@ -736,7 +741,7 @@ fn settle(
 
     b.status = Status::Resolved;
     b.winner = if winner_bps > 0 { winner.clone() } else { None };
-    storage::set_bounty(env, &b);
+    storage::set_bounty_state(env, &b);
     storage::clear_active(env, b.repo_id, b.issue);
 
     let tok = token::Client::new(env, &b.token);

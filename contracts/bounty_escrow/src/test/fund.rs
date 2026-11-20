@@ -21,6 +21,16 @@ fn happy_path_stores_bounty_and_moves_tokens() {
 }
 
 #[test]
+fn get_bounty_by_issue_returns_active_only() {
+    let c = Ctx::new();
+    assert_eq!(c.client.get_bounty_by_issue(&REPO, &7), None);
+    let id = c.fund(7);
+    assert_eq!(c.client.get_bounty_by_issue(&REPO, &7).unwrap().id, id);
+    c.client.release(&c.maintainer, &id, &c.winner);
+    assert_eq!(c.client.get_bounty_by_issue(&REPO, &7), None);
+}
+
+#[test]
 fn rejects_when_paused() {
     let c = Ctx::new();
     c.client.pause(&c.admin);

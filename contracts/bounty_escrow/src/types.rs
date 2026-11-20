@@ -27,6 +27,30 @@ pub struct Bounty {
     pub created_at: u64,
 }
 
+/// Immutable terms are kept separately from settlement state so status-only
+/// transitions do not rewrite the full bounty record.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BountyTerms {
+    pub id: u64,
+    pub maintainer: Address,
+    pub repo_id: u64,
+    pub issue: u64,
+    pub token: Address,
+    pub amount: i128,
+    pub fee_bps: u32,
+    pub deadline: u64,
+    pub relayer_allowed: bool,
+    pub created_at: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BountyState {
+    pub status: Status,
+    pub winner: Option<Address>,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TokenLimits {
@@ -81,6 +105,8 @@ pub enum DataKey {
     Config,
     NextId,
     Bounty(u64),
+    BountyTerms(u64),
+    BountyState(u64),
     ActiveByIssue(u64, u64),
     Token(Address),
     Totals(Address),
