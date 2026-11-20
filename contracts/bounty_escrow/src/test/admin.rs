@@ -83,6 +83,21 @@ fn set_admin_needs_both_auths() {
 }
 
 #[test]
+fn set_admin_rejects_same_address() {
+    let c = Ctx::new();
+    assert_eq!(
+        c.client
+            .try_set_admin(&c.admin, &c.admin)
+            .unwrap_err()
+            .unwrap(),
+        Error::SameAdmin
+    );
+    // Same-address change must return an error without publishing
+    assert_eq!(c.env.events().all().events().len(), 0);
+    assert_eq!(c.client.get_config().admin, c.admin);
+}
+
+#[test]
 fn old_admin_loses_every_admin_entry_point_after_handover() {
     let c = Ctx::new();
     let old_admin = c.admin.clone();

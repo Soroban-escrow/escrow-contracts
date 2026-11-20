@@ -31,4 +31,6 @@ pub enum Error {
     ConflictOfInterest = 23,
     /// The token credited a different amount than requested (fee-on-transfer or non-standard token).
     UnexpectedTransferAmount = 24,
+    /// The proposed new admin is already the active admin.
+    SameAdmin = 25,
 }
