@@ -91,7 +91,7 @@ impl BountyEscrow {
         grace_secs: u64,
         min_duration_secs: u64,
         max_duration_secs: u64,
-    ) -> Result<u64, Error> {
+    ) -> Result<(), Error> {
         admin.require_auth();
         if storage::has_config(&env) {
             return Err(Error::AlreadyInitialized);
@@ -660,6 +660,9 @@ impl BountyEscrow {
     /// Two-party auth: the new admin must also sign, to avoid typos.
     pub fn set_admin(env: Env, admin: Address, new_admin: Address) -> Result<(), Error> {
         let mut c = require_admin(&env, &admin)?;
+        if admin == new_admin {
+            return Err(Error::SameAdmin);
+        }
         new_admin.require_auth();
         c.admin = new_admin;
         storage::set_config(&env, &c);

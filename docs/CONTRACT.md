@@ -26,10 +26,10 @@ Soroban escrow for GitHub issue bounties. soroban-sdk 29.0.1, target `wasm32v1-n
 | `upgrade(admin, wasm_hash)` | admin | emits `upgraded` |
 
 ## Errors
-AlreadyInitialized=1 NotInitialized=2 Unauthorized=3 Paused=4 TokenNotAllowed=5 AmountTooSmall=6 AmountTooLarge=7 InvalidDeadline=8 IssueAlreadyFunded=9 BountyNotFound=10 InvalidStatus=11 DeadlineNotReached=12 SelfPayout=13 InvalidSplit=14 InvalidFee=15 Overflow=16 RelayerNotAllowed=17 TopUpLimitReached=18 DisputeNotExpired=19 DisputeAlreadyUsed=20 NothingToClaim=21 AlreadyClaimed=22 ConflictOfInterest=23 UnexpectedTransferAmount=24. Never renumber.
+AlreadyInitialized=1 NotInitialized=2 Unauthorized=3 Paused=4 TokenNotAllowed=5 AmountTooSmall=6 AmountTooLarge=7 InvalidDeadline=8 IssueAlreadyFunded=9 BountyNotFound=10 InvalidStatus=11 DeadlineNotReached=12 SelfPayout=13 InvalidSplit=14 InvalidFee=15 Overflow=16 RelayerNotAllowed=17 TopUpLimitReached=18 DisputeNotExpired=19 DisputeAlreadyUsed=20 NothingToClaim=21 AlreadyClaimed=22 ConflictOfInterest=23 UnexpectedTransferAmount=24 SameAdmin=25. Never renumber.
 
 ## Events
-Topics `("bounty", <name>, id)`: `funded`, `released` (`deferred`), `refunded`, `disputed`, `resolved` (`winner_deferred`), `evidence` (`evidence_hash`), `deadline_extended`, `topped_up`, `dispute_expired`, `claimed`, `config`, `paused`, `unpaused`, `upgraded`. Data carries every field the indexer needs.
+Topics `("bounty", <name>, id)`: `funded`, `released` (`deferred`), `refunded`, `disputed`, `resolved` (`winner_deferred`), `evidence` (`evidence_hash`), `deadline_extended`, `topped_up`, `dispute_expired`, `claimed`, `config`, `paused`, `unpaused`, `upgraded`, `token_set`, `token_removed`. Data carries every field the indexer needs.
 
 ## Fee math
 `fee = floor(amount*bps/10000)` (dust goes to the receiver); `portion = floor(amount*winner_bps/10000)` (dust stays with the maintainer). Checked arithmetic, `Overflow` on failure.
