@@ -168,6 +168,15 @@ fn resolve_works_while_paused() {
 }
 
 #[test]
+fn open_dispute_works_while_paused() {
+    let c = Ctx::new();
+    let id = c.fund(1);
+    c.client.pause(&c.admin);
+    c.client.open_dispute(&c.maintainer, &id);
+    assert_eq!(c.client.get_bounty(&id).status, Status::Disputed);
+}
+
+#[test]
 fn resolve_twice_rejected() {
     let c = Ctx::new();
     let id = disputed(&c);

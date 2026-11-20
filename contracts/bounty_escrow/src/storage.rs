@@ -1,7 +1,10 @@
 use soroban_sdk::{Address, Env};
 
 use crate::errors::Error;
-use crate::types::{Bounty, ClaimRecord, Config, DataKey, DisputeRecord, TokenLimits, Totals};
+use crate::types::{
+    Bounty, BountyState, BountyTerms, ClaimRecord, Config, DataKey, DisputeRecord, TokenLimits,
+    Totals,
+};
 
 // Ledgers close about every 5 s: 17_280 per day. Testnet max entry TTL is
 // 3_110_400 ledgers (180 d). Worst case a bounty must live is
@@ -65,21 +68,93 @@ fn bump_persistent(env: &Env, key: &DataKey) {
         .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
 }
 
-pub fn get_bounty(env: &Env, id: u64) -> Result<Bounty, Error> {
-    let key = DataKey::Bounty(id);
-    let b = env
-        .storage()
-        .persistent()
-        .get(&key)
-        .ok_or(Error::BountyNotFound)?;
-    bump_persistent(env, &key);
-    Ok(b)
+/// Storage getters return `Option`; entry points map absence to domain errors.
+pub fn get_bounty(env: &Env, id: u64) -> Option<Bounty> {
+    let terms_key = DataKey::BountyTerms(id);
+    let state_key = DataKey::BountyState(id);
+    let terms: BountyTerms = env.storage().persistent().get(&terms_key)?;
+    let state: BountyState = env.storage().persistent().get(&state_key)?;
+    bump_persistent(env, &terms_key);
+    bump_persistent(env, &state_key);
+    Some(Bounty {
+        id: terms.id,
+        maintainer: terms.maintainer,
+        repo_id: terms.repo_id,
+        issue: terms.issue,
+        token: terms.token,
+        amount: terms.amount,
+        fee_bps: terms.fee_bps,
+        deadline: terms.deadline,
+        relayer_allowed: terms.relayer_allowed,
+        status: state.status,
+        winner: state.winner,
+        created_at: terms.created_at,
+    })
 }
 
 pub fn set_bounty(env: &Env, b: &Bounty) {
-    let key = DataKey::Bounty(b.id);
-    env.storage().persistent().set(&key, b);
+    let terms_key = DataKey::BountyTerms(b.id);
+    let state_key = DataKey::BountyState(b.id);
+    env.storage().persistent().set(
+        &terms_key,
+        &BountyTerms {
+            id: b.id,
+            maintainer: b.maintainer.clone(),
+            repo_id: b.repo_id,
+            issue: b.issue,
+            token: b.token.clone(),
+            amount: b.amount,
+            fee_bps: b.fee_bps,
+            deadline: b.deadline,
+            relayer_allowed: b.relayer_allowed,
+            created_at: b.created_at,
+        },
+    );
+    env.storage().persistent().set(
+        &state_key,
+        &BountyState {
+            status: b.status,
+            winner: b.winner.clone(),
+        },
+    );
+    bump_persistent(env, &terms_key);
+    bump_persistent(env, &state_key);
+}
+
+pub fn set_bounty_state(env: &Env, b: &Bounty) {
+    let key = DataKey::BountyState(b.id);
+    env.storage().persistent().set(
+        &key,
+        &BountyState {
+            status: b.status,
+            winner: b.winner.clone(),
+        },
+    );
     bump_persistent(env, &key);
+}
+
+pub fn get_bounty_by_issue(env: &Env, repo_id: u64, issue: u64) -> Option<Bounty> {
+    let id: u64 = env
+        .storage()
+        .persistent()
+        .get(&DataKey::ActiveByIssue(repo_id, issue))?;
+    // Views must not extend TTL. Read the two entries directly.
+    let terms: BountyTerms = env.storage().persistent().get(&DataKey::BountyTerms(id))?;
+    let state: BountyState = env.storage().persistent().get(&DataKey::BountyState(id))?;
+    Some(Bounty {
+        id: terms.id,
+        maintainer: terms.maintainer,
+        repo_id: terms.repo_id,
+        issue: terms.issue,
+        token: terms.token,
+        amount: terms.amount,
+        fee_bps: terms.fee_bps,
+        deadline: terms.deadline,
+        relayer_allowed: terms.relayer_allowed,
+        status: state.status,
+        winner: state.winner,
+        created_at: terms.created_at,
+    })
 }
 
 pub fn active_bounty(env: &Env, repo_id: u64, issue: u64) -> Option<u64> {
