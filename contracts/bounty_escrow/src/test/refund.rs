@@ -29,6 +29,16 @@ fn works_at_exactly_deadline_plus_grace_without_fee() {
 }
 
 #[test]
+fn refundable_at_matches_refund_boundary() {
+    let c = Ctx::new();
+    let id = c.fund(1);
+    let expected = c.now() + 7 * DAY + GRACE;
+    assert_eq!(c.client.refundable_at(&id), expected);
+    c.set_time(expected);
+    c.client.refund(&c.maintainer, &id);
+}
+
+#[test]
 fn works_while_paused() {
     let c = Ctx::new();
     let id = c.fund(1);

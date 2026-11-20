@@ -66,6 +66,25 @@ fn fee_change_does_not_affect_existing_bounties() {
 }
 
 #[test]
+fn token_limit_change_only_affects_new_bounties() {
+    let c = Ctx::new();
+    let id = c.fund_with(1, 400 * UNIT, true);
+    c.client.set_token(&c.admin, &c.token, &UNIT, &100 * UNIT);
+    c.set_time(c.now() + 7 * DAY + GRACE);
+    c.client.refund(&c.maintainer, &id);
+    let result = c.client.try_fund_bounty(
+        &c.maintainer,
+        &REPO,
+        &2,
+        &c.token,
+        &(101 * UNIT),
+        &(c.now() + DAY),
+        &true,
+    );
+    assert_eq!(result.unwrap_err().unwrap(), Error::AmountTooLarge);
+}
+
+#[test]
 fn set_admin_needs_both_auths() {
     let c = Ctx::new();
     let new_admin = Address::generate(&c.env);
