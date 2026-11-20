@@ -539,6 +539,10 @@ impl BountyEscrow {
         storage::active_bounty(&env, repo_id, issue)
     }
 
+    pub fn bounty_count(env: Env) -> u64 {
+        storage::bounty_count(&env)
+    }
+
     pub fn get_config(env: Env) -> Result<Config, Error> {
         storage::get_config(&env)
     }

@@ -43,6 +43,11 @@ pub fn next_id(env: &Env) -> Result<u64, Error> {
     Ok(id)
 }
 
+pub fn bounty_count(env: &Env) -> u64 {
+    let next: u64 = env.storage().instance().get(&DataKey::NextId).unwrap_or(1);
+    next.saturating_sub(1)
+}
+
 pub fn get_token(env: &Env, token: &Address) -> Option<TokenLimits> {
     env.storage().instance().get(&DataKey::Token(token.clone()))
 }
