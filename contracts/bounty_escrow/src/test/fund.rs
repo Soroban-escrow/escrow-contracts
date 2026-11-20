@@ -182,3 +182,18 @@ fn unknown_bounty_not_found() {
         Error::BountyNotFound
     );
 }
+
+#[test]
+fn bounty_count_tracks_funded_bounties_without_bumping() {
+    let c = Ctx::new();
+    assert_eq!(c.client.bounty_count(), 0);
+
+    c.fund(1);
+    assert_eq!(c.client.bounty_count(), 1);
+
+    c.fund(2);
+    assert_eq!(c.client.bounty_count(), 2);
+
+    c.fund(3);
+    assert_eq!(c.client.bounty_count(), 3);
+}
