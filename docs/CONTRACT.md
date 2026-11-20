@@ -19,7 +19,7 @@ Soroban escrow for GitHub issue bounties. soroban-sdk 29.0.1, target `wasm32v1-n
 | `claim(winner, id)` | the recorded winner | A deferred payout must exist (`NothingToClaim`), be unclaimed (`AlreadyClaimed`), and belong to the caller (`Unauthorized`). Pays the net. Emits `claimed`. |
 | `resolve(arbiter, id, winner: Option, winner_bps)` | arbiter | Disputed only. `portion = floor(amount*bps/10000)`, fee taken from portion, remainder to maintainer. `InvalidSplit`, `SelfPayout`, `ConflictOfInterest` (winner is the arbiter or the treasury). Works while paused. A winner transfer that fails is deferred to `claim` instead of reverting. |
 | `resolve_with_evidence(arbiter, id, winner, winner_bps, evidence_hash)` | arbiter | Same rules and errors as `resolve`. Also emits `evidence` with the 32-byte `evidence_hash`. See "Resolution evidence". |
-| `get_bounty`, `active_bounty`, `get_config`, `get_totals`, `get_token`, `get_dispute_timeout` | none | read only |
+| `get_bounty`, `active_bounty`, `get_bounty_by_issue`, `get_config`, `get_totals`, `get_token`, `get_dispute_timeout` | none | read only |
 | `set_token/remove_token/set_fee/set_relayer/set_arbiter/set_treasury/set_grace/set_durations/set_dispute_timeout` | admin | emit `config` event |
 | `set_admin(admin, new_admin)` | admin and new_admin | two-party auth |
 | `pause/unpause` | admin | blocks `fund_bounty` only |

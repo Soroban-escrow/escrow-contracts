@@ -539,6 +539,10 @@ impl BountyEscrow {
         storage::active_bounty(&env, repo_id, issue)
     }
 
+    pub fn get_bounty_by_issue(env: Env, repo_id: u64, issue: u64) -> Option<Bounty> {
+        storage::get_bounty_by_issue(&env, repo_id, issue)
+    }
+
     pub fn get_config(env: Env) -> Result<Config, Error> {
         storage::get_config(&env)
     }

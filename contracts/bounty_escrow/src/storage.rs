@@ -91,6 +91,13 @@ pub fn active_bounty(env: &Env, repo_id: u64, issue: u64) -> Option<u64> {
     v
 }
 
+pub fn get_bounty_by_issue(env: &Env, repo_id: u64, issue: u64) -> Option<Bounty> {
+    let key = DataKey::ActiveByIssue(repo_id, issue);
+    let id: u64 = env.storage().persistent().get(&key)?;
+    let b_key = DataKey::Bounty(id);
+    env.storage().persistent().get(&b_key)
+}
+
 pub fn set_active(env: &Env, repo_id: u64, issue: u64, id: u64) {
     let key = DataKey::ActiveByIssue(repo_id, issue);
     env.storage().persistent().set(&key, &id);
