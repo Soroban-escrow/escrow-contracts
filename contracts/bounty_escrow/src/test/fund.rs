@@ -182,3 +182,20 @@ fn unknown_bounty_not_found() {
         Error::BountyNotFound
     );
 }
+
+#[test]
+fn get_bounty_by_issue_covers_none_open_and_terminal() {
+    let c = Ctx::new();
+    assert_eq!(c.client.get_bounty_by_issue(&REPO, &5), None);
+
+    let id = c.fund(5);
+    let open_b = c.client.get_bounty_by_issue(&REPO, &5);
+    assert!(open_b.is_some());
+    let b = open_b.unwrap();
+    assert_eq!(b.id, id);
+    assert_eq!(b.status, Status::Open);
+    assert_eq!(b.issue, 5);
+
+    c.client.release(&c.maintainer, &id, &c.winner);
+    assert_eq!(c.client.get_bounty_by_issue(&REPO, &5), None);
+}

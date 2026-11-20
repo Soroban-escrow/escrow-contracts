@@ -43,7 +43,7 @@ decides *whether a payment is allowed at all*, and that is the part you should a
 | | |
 |---|---|
 | **Deployed on testnet** | [`CCEKBPYC…ZF3J4RKN`](https://stellar.expert/explorer/testnet/contract/CCEKBPYCWKNTXIQLXJHVAF7RYGUZZ6MITA7VVJBOK5BHXUO44ELZ4F4V) |
-| **Size** | 35,115 bytes of Wasm (40 KiB CI gate), 30 entry points |
+| **Size** | 35,115 bytes of Wasm (40 KiB CI gate), 31 entry points |
 | **Tests** | 63, including a property test of the funds invariant |
 | **Built with** | Rust 1.99.1 · `soroban-sdk` 29.0.1 · target `wasm32v1-none` |
 | **Audited** | ❌ **No.** See [Before mainnet](#before-mainnet). |
