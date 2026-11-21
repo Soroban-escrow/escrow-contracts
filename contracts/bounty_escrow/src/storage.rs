@@ -98,8 +98,15 @@ pub fn get_arbiter(env: &Env) -> Result<Address, Error> {
 
 pub fn get_config(env: &Env) -> Result<Config, Error> {
     bump_instance(env);
-    let roles = get_roles(env)?;
-    let policy = get_policy(env)?;
+    get_config_view(env)
+}
+
+/// #181: Read-only config without bumping instance TTL.
+/// Used by view functions (`get_config`, `get_totals`) so reads do not
+/// extend the contract's storage lifetime — only state-changing calls should.
+pub fn get_config_view(env: &Env) -> Result<Config, Error> {
+    let roles = get_roles_no_bump(env)?;
+    let policy = get_policy_no_bump(env)?;
     let paused = is_paused(env);
     Ok(Config {
         admin: roles.admin,
@@ -111,6 +118,42 @@ pub fn get_config(env: &Env) -> Result<Config, Error> {
         min_duration_secs: policy.min_duration_secs,
         max_duration_secs: policy.max_duration_secs,
         paused,
+    })
+}
+
+/// #181: Read roles without bumping TTL.
+fn get_roles_no_bump(env: &Env) -> Result<RolesConfig, Error> {
+    if let Some(r) = env.storage().instance().get(&DataKey::Roles) {
+        return Ok(r);
+    }
+    let c: Config = env
+        .storage()
+        .instance()
+        .get(&DataKey::Config)
+        .ok_or(Error::NotInitialized)?;
+    Ok(RolesConfig {
+        admin: c.admin,
+        relayer: c.relayer,
+        arbiter: c.arbiter,
+        treasury: c.treasury,
+    })
+}
+
+/// #181: Read policy without bumping TTL.
+fn get_policy_no_bump(env: &Env) -> Result<PolicyConfig, Error> {
+    if let Some(p) = env.storage().instance().get(&DataKey::Policy) {
+        return Ok(p);
+    }
+    let c: Config = env
+        .storage()
+        .instance()
+        .get(&DataKey::Config)
+        .ok_or(Error::NotInitialized)?;
+    Ok(PolicyConfig {
+        fee_bps: c.fee_bps,
+        grace_secs: c.grace_secs,
+        min_duration_secs: c.min_duration_secs,
+        max_duration_secs: c.max_duration_secs,
     })
 }
 

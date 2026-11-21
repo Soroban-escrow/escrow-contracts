@@ -286,6 +286,39 @@ impl BountyEscrow {
         })
     }
 
+    /// #178: Transfer the maintainer key on an open bounty for key rotation.
+    /// Both the current and new maintainer must authorise. The new maintainer
+    /// cannot be the contract itself. Only bounties in `Open` status are eligible.
+    pub fn transfer_maintainer(
+        env: Env,
+        current: Address,
+        new_maintainer: Address,
+        bounty_id: u64,
+    ) -> Result<(), Error> {
+        current.require_auth();
+        new_maintainer.require_auth();
+        let mut b = storage::get_bounty(&env, bounty_id)?;
+        if b.status != Status::Open {
+            return Err(Error::InvalidStatus);
+        }
+        if b.maintainer != current {
+            return Err(Error::Unauthorized);
+        }
+        if new_maintainer == env.current_contract_address() {
+            return Err(Error::SelfPayout);
+        }
+        let old = b.maintainer.clone();
+        b.maintainer = new_maintainer.clone();
+        storage::set_bounty(&env, &b);
+        events::MaintainerTransferred {
+            id: bounty_id,
+            from: old,
+            to: new_maintainer,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
     pub fn refund(
         env: Env,
         maintainer: Address,
@@ -545,7 +578,7 @@ impl BountyEscrow {
     }
 
     pub fn get_config(env: Env) -> Result<Config, Error> {
-        storage::get_config(&env)
+        storage::get_config_view(&env)
     }
 
     pub fn get_totals(env: Env, token: Address) -> Totals {
@@ -598,6 +631,18 @@ impl BountyEscrow {
         max: i128,
     ) -> Result<(), Error> {
         require_admin(&env, &admin)?;
+        // #171: Refuse to allowlist the contract's own address as a token.
+        // A token::Client call on the escrow itself would recurse into the contract.
+        if token == env.current_contract_address() {
+            return Err(Error::SelfPayout); // Reusing the self-reference guard error
+        }
+        // #173: Probe the token for SEP-41 compliance by calling decimals().
+        // A typo or a G... account address will fail here with a clear error,
+        // rather than panicking later in fund_bounty's transfer.
+        let tk = token::Client::new(&env, &token);
+        if tk.try_decimals().is_err() {
+            return Err(Error::TokenNotAllowed);
+        }
         if min <= 0 {
             return Err(Error::AmountTooSmall);
         }

@@ -130,3 +130,12 @@ pub struct EvidenceRecorded {
     /// SHA-256 digest of the evidence bundle; see docs/CONTRACT.md.
     pub evidence_hash: BytesN<32>,
 }
+
+/// #178: Emitted when a bounty's maintainer key is rotated.
+#[contractevent(topics = ["bounty", "maintainer_transferred"])]
+pub struct MaintainerTransferred {
+    #[topic]
+    pub id: u64,
+    pub from: Address,
+    pub to: Address,
+}

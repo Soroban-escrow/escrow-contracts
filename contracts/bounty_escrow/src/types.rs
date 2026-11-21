@@ -24,7 +24,11 @@ pub struct Bounty {
     pub relayer_allowed: bool,
     pub status: Status,
     pub winner: Option<Address>,
-    pub created_at: u64,
+    // #183: created_at removed — derivable from the Funded event emitted
+    // at creation time. Dropping it shrinks the serialised Bounty by ~16 bytes
+    // (u64 + alignment), reducing rent and CPU on every set_bounty rewrite.
+    // Migration cost: a one-time read of the Funded event for each bounty
+    // if a historical timestamp is ever needed; not stored on-chain.
 }
 
 #[contracttype]
