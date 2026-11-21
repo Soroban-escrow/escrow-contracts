@@ -55,7 +55,7 @@ impl<'a> Ctx<'a> {
             &(90 * DAY),
         );
         for t in [&token, &token2] {
-            client.set_token(&admin, t, &UNIT, &(500 * UNIT));
+            client.set_token(&admin, t, &UNIT, &(500 * UNIT), &None);
             StellarAssetClient::new(&env, t).mint(&maintainer, &(10_000 * UNIT));
         }
         Ctx {

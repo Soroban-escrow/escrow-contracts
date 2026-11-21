@@ -1,4 +1,4 @@
-use std::{fs, string::String, vec::Vec};
+use std::{format, fs, println, string::String, vec, vec::Vec};
 
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
@@ -170,7 +170,7 @@ fn measure_expire_dispute() -> Measurement {
 fn measure_set_token() -> Measurement {
     let c = Ctx::new();
     c.client
-        .set_token(&c.admin, &c.token2, &UNIT, &(500 * UNIT));
+        .set_token(&c.admin, &c.token2, &UNIT, &(500 * UNIT), &None);
     record("set_token", &c)
 }
 

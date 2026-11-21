@@ -1,7 +1,9 @@
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, Env, Vec};
 
 use crate::errors::Error;
-use crate::types::{Bounty, ClaimRecord, Config, DataKey, DisputeRecord, TokenLimits, Totals};
+use crate::types::{
+    Bounty, ClaimRecord, Config, DataKey, DisputeRecord, Status, TokenLimits, Totals,
+};
 
 // Ledgers close about every 5 s: 17_280 per day. Testnet max entry TTL is
 // 3_110_400 ledgers (180 d). Worst case a bounty must live is
@@ -59,7 +61,7 @@ pub fn remove_token(env: &Env, token: &Address) {
         .remove(&DataKey::Token(token.clone()));
 }
 
-fn bump_persistent(env: &Env, key: &DataKey) {
+pub fn bump_persistent(env: &Env, key: &DataKey) {
     env.storage()
         .persistent()
         .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
@@ -67,13 +69,41 @@ fn bump_persistent(env: &Env, key: &DataKey) {
 
 pub fn get_bounty(env: &Env, id: u64) -> Result<Bounty, Error> {
     let key = DataKey::Bounty(id);
-    let b = env
+    let b: Bounty = env
         .storage()
         .persistent()
         .get(&key)
         .ok_or(Error::BountyNotFound)?;
-    bump_persistent(env, &key);
+    if b.status == Status::Open || b.status == Status::Disputed {
+        bump_persistent(env, &key);
+    }
     Ok(b)
+}
+
+pub const MAX_BOUNTIES_LIMIT: u32 = 50;
+
+pub fn get_bounties(env: &Env, start: u64, limit: u32) -> Vec<Bounty> {
+    let capped_limit = limit.min(MAX_BOUNTIES_LIMIT);
+    let mut list = Vec::new(env);
+    if capped_limit == 0 {
+        return list;
+    }
+    let max_id: u64 = env.storage().instance().get(&DataKey::NextId).unwrap_or(1);
+    let mut id = start;
+    while id < max_id && list.len() < capped_limit {
+        let key = DataKey::Bounty(id);
+        if let Some(b) = env.storage().persistent().get::<DataKey, Bounty>(&key) {
+            if b.status == Status::Open || b.status == Status::Disputed {
+                bump_persistent(env, &key);
+            }
+            list.push_back(b);
+        }
+        id = match id.checked_add(1) {
+            Some(next) => next,
+            None => break,
+        };
+    }
+    list
 }
 
 pub fn set_bounty(env: &Env, b: &Bounty) {

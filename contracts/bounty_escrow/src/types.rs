@@ -32,6 +32,7 @@ pub struct Bounty {
 pub struct TokenLimits {
     pub min_amount: i128,
     pub max_amount: i128,
+    pub fee_bps: Option<u32>,
 }
 
 #[contracttype]

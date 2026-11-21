@@ -128,7 +128,7 @@ fn old_admin_loses_every_admin_entry_point_after_handover() {
     );
     assert_eq!(
         c.client
-            .try_set_token(&old_admin, &c.token, &1, &UNIT)
+            .try_set_token(&old_admin, &c.token, &1, &UNIT, &None)
             .unwrap_err()
             .unwrap(),
         Error::Unauthorized
@@ -170,7 +170,7 @@ fn old_admin_loses_every_admin_entry_point_after_handover() {
     c.client.set_treasury(&new_admin, &old_admin);
     c.client.set_grace(&new_admin, &1);
     c.client.set_durations(&new_admin, &1, &2);
-    c.client.set_token(&new_admin, &c.token, &1, &UNIT);
+    c.client.set_token(&new_admin, &c.token, &1, &UNIT, &None);
     c.client.remove_token(&new_admin, &c.token);
     c.client.pause(&new_admin);
     c.client.unpause(&new_admin);
@@ -219,25 +219,34 @@ fn set_token_validates() {
     let c = Ctx::new();
     assert_eq!(
         c.client
-            .try_set_token(&c.admin, &c.token, &0, &5)
+            .try_set_token(&c.admin, &c.token, &0, &5, &None)
             .unwrap_err()
             .unwrap(),
         Error::AmountTooSmall
     );
     assert_eq!(
         c.client
-            .try_set_token(&c.admin, &c.token, &5, &4)
+            .try_set_token(&c.admin, &c.token, &5, &4, &None)
             .unwrap_err()
             .unwrap(),
         Error::AmountTooLarge
+    );
+    assert_eq!(
+        c.client
+            .try_set_token(&c.admin, &c.token, &1, &100, &Some(1001))
+            .unwrap_err()
+            .unwrap(),
+        Error::InvalidFee
     );
     let t = c
         .env
         .register_stellar_asset_contract_v2(Address::generate(&c.env))
         .address();
     StellarAssetClient::new(&c.env, &t).mint(&c.maintainer, &UNIT);
-    c.client.set_token(&c.admin, &t, &1, &UNIT);
-    assert_eq!(c.client.get_token(&t).unwrap().max_amount, UNIT);
+    c.client.set_token(&c.admin, &t, &1, &UNIT, &Some(150));
+    let stored = c.client.get_token(&t).unwrap();
+    assert_eq!(stored.max_amount, UNIT);
+    assert_eq!(stored.fee_bps, Some(150));
 }
 
 #[test]
@@ -247,7 +256,7 @@ fn token_changes_emit_dedicated_events() {
         .env
         .register_stellar_asset_contract_v2(Address::generate(&c.env))
         .address();
-    c.client.set_token(&c.admin, &token, &1, &UNIT);
+    c.client.set_token(&c.admin, &token, &1, &UNIT, &None);
     c.client.remove_token(&c.admin, &token);
     assert!(c.env.events().all().events().len() >= 2);
 }
@@ -295,7 +304,7 @@ fn all_setters_require_admin() {
     );
     assert_eq!(
         c.client
-            .try_set_token(&x, &c.token, &1, &2)
+            .try_set_token(&x, &c.token, &1, &2, &None)
             .unwrap_err()
             .unwrap(),
         e

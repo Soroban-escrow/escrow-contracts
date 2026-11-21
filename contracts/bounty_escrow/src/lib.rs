@@ -25,6 +25,7 @@ mod test;
 
 use soroban_sdk::{
     contract, contractimpl, symbol_short, token, Address, BytesN, ContractExecutable, Env, Symbol,
+    Vec,
 };
 
 pub use errors::Error;
@@ -36,6 +37,8 @@ use types::{ClaimRecord, DisputeRecord};
 
 /// Top-ups per bounty. Bounds storage and event volume.
 const MAX_TOP_UPS: u32 = 10;
+/// Maximum number of bounty IDs permitted in a single keeper bump call.
+pub const MAX_BUMP_LIMIT: u32 = 50;
 
 #[contract]
 pub struct BountyEscrow;
@@ -91,7 +94,7 @@ impl BountyEscrow {
         grace_secs: u64,
         min_duration_secs: u64,
         max_duration_secs: u64,
-    ) -> Result<u64, Error> {
+    ) -> Result<(), Error> {
         admin.require_auth();
         if storage::has_config(&env) {
             return Err(Error::AlreadyInitialized);
@@ -145,6 +148,7 @@ impl BountyEscrow {
         if amount > limits.max_amount {
             return Err(Error::AmountTooLarge);
         }
+        let fee_bps = limits.fee_bps.unwrap_or(cfg.fee_bps);
         let now = env.ledger().timestamp();
         let earliest = now
             .checked_add(cfg.min_duration_secs)
@@ -169,7 +173,7 @@ impl BountyEscrow {
                 issue,
                 token: token.clone(),
                 amount,
-                fee_bps: cfg.fee_bps,
+                fee_bps,
                 deadline,
                 relayer_allowed,
                 status: Status::Open,
@@ -204,7 +208,7 @@ impl BountyEscrow {
             issue,
             token,
             amount,
-            fee_bps: cfg.fee_bps,
+            fee_bps,
             deadline,
             relayer_allowed,
         }
@@ -546,6 +550,10 @@ impl BountyEscrow {
         storage::get_bounty(&env, id)
     }
 
+    pub fn get_bounties(env: Env, start: u64, limit: u32) -> Vec<Bounty> {
+        storage::get_bounties(&env, start, limit)
+    }
+
     pub fn active_bounty(env: Env, repo_id: u64, issue: u64) -> Option<u64> {
         storage::active_bounty(&env, repo_id, issue)
     }
@@ -562,6 +570,73 @@ impl BountyEscrow {
         storage::get_token(&env, &token)
     }
 
+    /// Read-only fee preview for release using the bounty's snapshotted fee_bps.
+    pub fn quote_release(env: Env, bounty_id: u64) -> Result<(i128, i128), Error> {
+        let b = storage::get_bounty(&env, bounty_id)?;
+        let fee = fees::fee(b.amount, b.fee_bps)?;
+        let net = fees::net(b.amount, b.fee_bps)?;
+        Ok((net, fee))
+    }
+
+    /// Read-only fee and split preview for resolve using the bounty's snapshotted fee_bps.
+    pub fn quote_resolve(
+        env: Env,
+        bounty_id: u64,
+        winner_bps: u32,
+    ) -> Result<(i128, i128, i128), Error> {
+        let b = storage::get_bounty(&env, bounty_id)?;
+        if winner_bps > 10_000 {
+            return Err(Error::InvalidSplit);
+        }
+        let portion = fees::portion(b.amount, winner_bps)?;
+        let mut fee = 0;
+        let mut winner_net = 0;
+        if winner_bps > 0 {
+            fee = fees::fee(portion, b.fee_bps)?;
+            winner_net = sub(portion, fee)?;
+        }
+        let maintainer_amount = sub(b.amount, portion)?;
+        Ok((winner_net, fee, maintainer_amount))
+    }
+
+    /// Read-only fee preview for pre-funding calculations.
+    pub fn quote_fee(_env: Env, amount: i128, fee_bps: u32) -> Result<(i128, i128), Error> {
+        if amount < 0 {
+            return Err(Error::AmountTooSmall);
+        }
+        if fee_bps > fees::MAX_FEE_BPS {
+            return Err(Error::InvalidFee);
+        }
+        let fee = fees::fee(amount, fee_bps)?;
+        let net = fees::net(amount, fee_bps)?;
+        Ok((net, fee))
+    }
+
+    /// Permissionless keeper bump that extends TTLs of non-terminal bounties and their active locks/totals.
+    pub fn bump(env: Env, bounty_ids: Vec<u64>) -> Result<(), Error> {
+        if bounty_ids.len() > MAX_BUMP_LIMIT {
+            return Err(Error::AmountTooLarge);
+        }
+        for id in bounty_ids.iter() {
+            let key = DataKey::Bounty(id);
+            if let Some(b) = env.storage().persistent().get::<DataKey, Bounty>(&key) {
+                if b.status == Status::Open || b.status == Status::Disputed {
+                    storage::bump_persistent(&env, &key);
+                    let active_key = DataKey::ActiveByIssue(b.repo_id, b.issue);
+                    if env.storage().persistent().has(&active_key) {
+                        storage::bump_persistent(&env, &active_key);
+                    }
+                    let totals_key = DataKey::Totals(b.token.clone());
+                    if env.storage().persistent().has(&totals_key) {
+                        storage::bump_persistent(&env, &totals_key);
+                    }
+                }
+            }
+        }
+        storage::bump_instance(&env);
+        Ok(())
+    }
+
     // ---- admin ----
 
     pub fn set_token(
@@ -570,6 +645,7 @@ impl BountyEscrow {
         token: Address,
         min: i128,
         max: i128,
+        fee_bps: Option<u32>,
     ) -> Result<(), Error> {
         require_admin(&env, &admin)?;
         if min <= 0 {
@@ -578,12 +654,18 @@ impl BountyEscrow {
         if max < min {
             return Err(Error::AmountTooLarge);
         }
+        if let Some(bps) = fee_bps {
+            if bps > fees::MAX_FEE_BPS {
+                return Err(Error::InvalidFee);
+            }
+        }
         storage::set_token(
             &env,
             &token,
             &TokenLimits {
                 min_amount: min,
                 max_amount: max,
+                fee_bps,
             },
         );
         events::TokenSet { token, min, max }.publish(&env);

@@ -9,7 +9,7 @@ Soroban escrow for GitHub issue bounties. soroban-sdk 29.0.1, target `wasm32v1-n
 | Function | Auth | Notes / errors |
 |---|---|---|
 | `init(admin, relayer, arbiter, treasury, fee_bps, grace_secs, min_dur, max_dur)` | admin | once (`AlreadyInitialized`); `fee_bps <= 1000` (`InvalidFee`); `min <= max` (`InvalidDeadline`) |
-| `fund_bounty(maintainer, repo_id, issue, token, amount, deadline, relayer_allowed) -> id` | maintainer | `Paused`, `TokenNotAllowed`, `AmountTooSmall/Large`, `InvalidDeadline`, `IssueAlreadyFunded`. Fee bps snapshotted. |
+| `fund_bounty(maintainer, repo_id, issue, token, amount, deadline, relayer_allowed) -> id` | maintainer | `Paused`, `TokenNotAllowed`, `AmountTooSmall/Large`, `InvalidDeadline`, `IssueAlreadyFunded`. Snapshots per-token fee override if set, else global `fee_bps`. |
 | `release(caller, id, winner)` | maintainer, or relayer if `relayer_allowed` | `InvalidStatus`, `Unauthorized`, `RelayerNotAllowed`, `SelfPayout` (winner is the maintainer or the contract itself). Allowed after deadline until refunded. Pays `amount - fee` to winner, `fee` to treasury. If the winner's transfer fails (for example, no trustline), the release still succeeds and the net becomes a claim (`deferred = true`). |
 | `refund(maintainer, id)` | maintainer | only at/after `deadline + grace` (`DeadlineNotReached`); full amount, no fee; works while paused |
 | `open_dispute(caller, id)` | maintainer or arbiter | Open only; freezes release and refund. One dispute per bounty (`DisputeAlreadyUsed`). |
@@ -19,8 +19,11 @@ Soroban escrow for GitHub issue bounties. soroban-sdk 29.0.1, target `wasm32v1-n
 | `claim(winner, id)` | the recorded winner | A deferred payout must exist (`NothingToClaim`), be unclaimed (`AlreadyClaimed`), and belong to the caller (`Unauthorized`). Pays the net. Emits `claimed`. |
 | `resolve(arbiter, id, winner: Option, winner_bps)` | arbiter | Disputed only. `portion = floor(amount*bps/10000)`, fee taken from portion, remainder to maintainer. `InvalidSplit`, `SelfPayout`, `ConflictOfInterest` (winner is the arbiter or the treasury). Works while paused. A winner transfer that fails is deferred to `claim` instead of reverting. |
 | `resolve_with_evidence(arbiter, id, winner, winner_bps, evidence_hash)` | arbiter | Same rules and errors as `resolve`. Also emits `evidence` with the 32-byte `evidence_hash`. See "Resolution evidence". |
-| `get_bounty`, `active_bounty`, `get_config`, `get_totals`, `get_token`, `get_dispute_timeout` | none | read only |
-| `set_token/remove_token/set_fee/set_relayer/set_arbiter/set_treasury/set_grace/set_durations/set_dispute_timeout` | admin | emit `config` event |
+| `bump(bounty_ids)` | anyone | Permissionless keeper entry point. Extends TTL of active (`Open`/`Disputed`) bounties, issue locks, and token totals to 120 days. Capped by `MAX_BUMP_LIMIT` (50). Side-effect free apart from TTL. |
+| `get_bounty`, `get_bounties`, `active_bounty`, `get_config`, `get_totals`, `get_token`, `get_dispute_timeout` | none | read only. `get_bounties(start, limit)` returns up to `limit` bounties (capped at 50) skipping missing ids. |
+| `quote_release(bounty_id)`, `quote_resolve(bounty_id, winner_bps)`, `quote_fee(amount, fee_bps)` | none | read only simulation views for fee math previews. |
+| `set_token(admin, token, min, max, fee_bps)` | admin | emit `config` and `token_set` event. `fee_bps` is an optional override capped by `MAX_FEE_BPS`. |
+| `remove_token/set_fee/set_relayer/set_arbiter/set_treasury/set_grace/set_durations/set_dispute_timeout` | admin | emit `config` event |
 | `set_admin(admin, new_admin)` | admin and new_admin | two-party auth |
 | `pause/unpause` | admin | blocks `fund_bounty` only |
 | `upgrade(admin, wasm_hash)` | admin | emits `upgraded` |
@@ -39,8 +42,43 @@ Per token: `funded == released_net + fees + refunded + held`, and `held + claima
 
 A deferred payout moves its net from `held` to `claimable` and does not touch `released_net`. `claim` moves it from `claimable` to `released_net`. `top_up` raises `funded` and `held` together. The property test has not been updated for `claimable` or the new operations yet; it still checks `held == balance` and will fail on any sequence that defers a payout.
 
-## TTL
-Ledgers are ~5 s (17,280/day). Persistent entries and the instance are extended to 120 d whenever under 30 d remain; worst-case bounty life is 90 d + 3 d grace = 93 d (compile-time asserted). Testnet max entry TTL is 3,110,400 ledgers; re-check on mainnet.
+## TTL & Storage Lifetime Policy
+
+Ledgers close approximately every 5 seconds (~17,280 ledgers/day). Persistent storage entries and contract instance storage are extended to 120 days (2,073,600 ledgers) whenever fewer than 30 days (518,400 ledgers) remain.
+
+### Active vs Terminal Bounties Policy
+- **Open and Disputed Bounties**: Every contract read (`get_bounty`, `get_bounties`) and state-mutating operation extends TTL back to 120 days whenever the entry enters the 30-day threshold window. In addition, the permissionless `bump(bounty_ids: Vec<u64>)` entry point allows off-chain keepers or backend workers to bump long-lived, inactive bounties without mutating contract state.
+- **Terminal Bounties (`Released`, `Refunded`, `Resolved`)**: Terminal bounties do **NOT** extend their TTL on read. Once settled, funds have completely exited the escrow and the active-issue lock is removed. Ceasing rent extensions for terminal bounties keeps contract rent bounded and prevents indefinite storage accumulation on-chain.
+- **Indexer Requirements**: Terminal bounties remain alive in persistent storage for their remaining TTL (up to 120 days after terminal transition). Indexers must ingest and record the terminal state and payout breakdown from events (`released`, `refunded`, `resolved`) within this window. Any historical queries for older expired bounties must be served from off-chain indexed databases or archive RPC nodes rather than live contract state.
+
+## Fee Quotes & Simulation
+
+To avoid duplicating fee calculations and rounding rules across client SDKs, frontend TypeScript apps, and backend services, the contract exposes read-only simulation views:
+
+- `quote_release(bounty_id) -> (net, fee)`: Simulates release payout using the bounty's snapshotted `fee_bps`.
+- `quote_resolve(bounty_id, winner_bps) -> (winner_net, fee, maintainer_amount)`: Simulates arbiter dispute resolution split using the bounty's snapshotted `fee_bps`.
+- `quote_fee(amount, fee_bps) -> (net, fee)`: Simulates pre-funding fee and net recipient calculations for preview UI.
+
+These methods execute via read-only RPC simulation (zero gas cost to the user).
+
+### Client Call Example
+
+```typescript
+import { SorobanRpc, Address, scValToNative, xdr } from "@stellar/stellar-sdk";
+
+// Example: Quote release payout before signing
+async function getReleaseQuote(server: SorobanRpc.Server, contractId: string, bountyId: bigint) {
+  const sim = await server.simulateTransaction(
+    buildInvokeTx(contractId, "quote_release", [xdr.ScVal.scvU64(xdr.Uint64.fromString(bountyId.toString()))])
+  );
+  if (SorobanRpc.Api.isSimulationSuccess(sim)) {
+    const [net, fee] = scValToNative(sim.result.retval);
+    console.log(`Winner receives: ${net}, Protocol fee: ${fee}`);
+    return { net, fee };
+  }
+  throw new Error("Quote simulation failed");
+}
+```
 
 ## Resource budgets
 `contracts/bounty_escrow/src/test/budgets.rs` runs each state-changing entry point in the table below through `Env::cost_estimate()` and compares the result with `docs/budgets.json`. The test fails if CPU instructions, memory, read/write entries or read/write bytes exceed the snapshot by more than its `tolerance_percent` (10%). Refresh the snapshot deliberately after an intentional change:
