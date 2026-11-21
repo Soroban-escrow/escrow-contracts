@@ -545,7 +545,7 @@ impl BountyEscrow {
     }
 
     pub fn get_config(env: Env) -> Result<Config, Error> {
-        storage::get_config(&env)
+        storage::get_config_view(&env)
     }
 
     pub fn get_totals(env: Env, token: Address) -> Totals {
