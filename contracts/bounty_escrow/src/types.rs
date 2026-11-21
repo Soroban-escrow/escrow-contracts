@@ -46,6 +46,8 @@ pub struct Config {
     pub min_duration_secs: u64,
     pub max_duration_secs: u64,
     pub paused: bool,
+    /// Issue #175: Optional fast-pause key. Can call pause but never unpause or move funds.
+    pub guardian: Option<Address>,
 }
 
 #[contracttype]

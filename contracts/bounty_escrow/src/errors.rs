@@ -31,4 +31,8 @@ pub enum Error {
     ConflictOfInterest = 23,
     /// The token credited a different amount than requested (fee-on-transfer or non-standard token).
     UnexpectedTransferAmount = 24,
+    /// Issue #176: set_admin called with the same address as the current admin.
+    NoOpAdminChange = 25,
+    /// Issue #179: sweep_excess called but balance == held; nothing to move.
+    NothingToSweep = 26,
 }

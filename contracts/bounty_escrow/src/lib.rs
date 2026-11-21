@@ -690,10 +690,14 @@ impl BountyEscrow {
     }
 
     /// Two-party auth: the new admin must also sign, to avoid typos.
+    /// Issue #176: reject no-op when new_admin == current admin.
     pub fn set_admin(env: Env, admin: Address, new_admin: Address) -> Result<(), Error> {
         require_admin(&env, &admin)?;
-        new_admin.require_auth();
         let mut r = storage::get_roles(&env)?;
+        if r.admin == new_admin {
+            return Err(Error::NoOpAdminChange);
+        }
+        new_admin.require_auth();
         r.admin = new_admin;
         storage::set_roles(&env, &r);
         changed(&env, symbol_short!("admin"));
@@ -701,8 +705,15 @@ impl BountyEscrow {
     }
 
     /// Blocks `fund_bounty` only; release, refund and resolve keep working.
-    pub fn pause(env: Env, admin: Address) -> Result<(), Error> {
-        require_admin(&env, &admin)?;
+    /// Issue #175: guardian (if set) may also call pause without being admin.
+    pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
+        caller.require_auth();
+        let cfg = storage::get_config(&env)?;
+        let is_admin = cfg.admin == caller;
+        let is_guardian = cfg.guardian.as_ref() == Some(&caller);
+        if !is_admin && !is_guardian {
+            return Err(Error::Unauthorized);
+        }
         storage::set_paused(&env, true);
         events::Paused {}.publish(&env);
         Ok(())
@@ -734,6 +745,30 @@ impl BountyEscrow {
         env.deployer()
             .update_current_contract(ContractExecutable::Wasm(wasm_hash.clone()));
         events::Upgraded { wasm_hash }.publish(&env);
+        Ok(())
+    }
+
+    /// Issue #175: Set or clear the guardian address. Admin only.
+    pub fn set_guardian(env: Env, admin: Address, guardian: Option<Address>) -> Result<(), Error> {
+        require_admin(&env, &admin)?;
+        let mut cfg = storage::get_config(&env)?;
+        cfg.guardian = guardian;
+        storage::set_config(&env, &cfg);
+        changed(&env, symbol_short!("guardian"));
+        Ok(())
+    }
+
+    /// Issue #179: Move only the excess (balance – held) to `to`. Admin only.
+    /// Errors if there is nothing to sweep; never touches held funds.
+    pub fn sweep_excess(env: Env, admin: Address, token: Address, to: Address) -> Result<(), Error> {
+        require_admin(&env, &admin)?;
+        let totals = storage::get_totals(&env, &token);
+        let balance = token::Client::new(&env, &token).balance(&env.current_contract_address());
+        let excess = balance.checked_sub(totals.held).unwrap_or(0);
+        if excess <= 0 {
+            return Err(Error::NothingToSweep);
+        }
+        token::Client::new(&env, &token).transfer(&env.current_contract_address(), &to, &excess);
         Ok(())
     }
 }
