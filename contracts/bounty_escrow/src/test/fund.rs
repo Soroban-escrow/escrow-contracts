@@ -1,7 +1,7 @@
 use soroban_sdk::{testutils::Address as _, Address};
 
 use super::setup::*;
-use crate::{Error, Status};
+use crate::{DataKey, Error, Status};
 
 #[test]
 fn happy_path_stores_bounty_and_moves_tokens() {
@@ -193,4 +193,22 @@ fn bounty_count_tracks_created_bounties() {
     assert_eq!(c.client.bounty_count(), 2);
     c.fund(3);
     assert_eq!(c.client.bounty_count(), 3);
+}
+
+#[test]
+fn next_id_overflow_returns_error() {
+    let c = Ctx::new();
+    c.env.as_contract(&c.client.address, || {
+        c.env.storage().instance().set(&DataKey::NextId, &u64::MAX);
+    });
+    let r = c.client.try_fund_bounty(
+        &c.maintainer,
+        &REPO,
+        &1,
+        &c.token,
+        &UNIT,
+        &(c.now() + 2 * DAY),
+        &true,
+    );
+    assert_eq!(r.unwrap_err().unwrap(), Error::Overflow);
 }
