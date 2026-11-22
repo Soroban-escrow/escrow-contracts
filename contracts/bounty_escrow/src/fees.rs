@@ -4,6 +4,9 @@ pub const BPS_DENOMINATOR: i128 = 10_000;
 pub const MAX_FEE_BPS: u32 = 1_000;
 
 fn mul_div(amount: i128, bps: u32) -> Result<i128, Error> {
+    if amount < 0 {
+        return Err(Error::AmountTooSmall);
+    }
     amount
         .checked_mul(i128::from(bps))
         .map(|v| v / BPS_DENOMINATOR)
@@ -22,6 +25,9 @@ pub fn net(amount: i128, bps: u32) -> Result<i128, Error> {
 
 /// floor(amount * winner_bps / 10_000); dust stays with the maintainer.
 pub fn portion(amount: i128, winner_bps: u32) -> Result<i128, Error> {
+    if i128::from(winner_bps) > BPS_DENOMINATOR {
+        return Err(Error::InvalidSplit);
+    }
     mul_div(amount, winner_bps)
 }
 
@@ -79,5 +85,23 @@ mod tests {
                 assert_eq!(net(a, b).unwrap() + fee(a, b).unwrap(), a);
             }
         }
+    }
+
+    #[test]
+    fn negative_amounts_rejected() {
+        assert_eq!(mul_div(-1, 300), Err(Error::AmountTooSmall));
+        assert_eq!(mul_div(-100, 300), Err(Error::AmountTooSmall));
+        assert_eq!(mul_div(i128::MIN, 10_000), Err(Error::AmountTooSmall));
+        assert_eq!(fee(-1, 300), Err(Error::AmountTooSmall));
+        assert_eq!(net(-1, 300), Err(Error::AmountTooSmall));
+        assert_eq!(portion(-1, 5_000), Err(Error::AmountTooSmall));
+    }
+
+    #[test]
+    fn portion_out_of_range_bps() {
+        assert_eq!(portion(1_000_000, 10_000), Ok(1_000_000));
+        assert_eq!(portion(1_000_000, 10_001), Err(Error::InvalidSplit));
+        assert_eq!(portion(1_000_000, u32::MAX), Err(Error::InvalidSplit));
+        assert_eq!(portion(-1, 10_001), Err(Error::InvalidSplit));
     }
 }
