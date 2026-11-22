@@ -80,4 +80,12 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn negative_amount() {
+        assert_eq!(net(-1, 300), Ok(-1));
+        assert_eq!(net(-100, 300), Ok(-97));
+        assert_eq!(net(-1_000_000, 1_000), Ok(-900_000));
+        assert_eq!(net(i128::MIN, 10_000), Err(Error::Overflow));
+    }
 }
