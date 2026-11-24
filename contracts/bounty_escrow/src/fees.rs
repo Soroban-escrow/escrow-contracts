@@ -95,6 +95,8 @@ pub fn share(net: i128, share_bps: u32) -> Result<i128, Error> {
     reason = "tests may panic on unexpected results and use plain arithmetic to compute expected values"
 )]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
 
     #[test]
@@ -129,11 +131,45 @@ mod tests {
     }
 
     #[test]
-    fn net_plus_fee_is_amount() {
+    fn net_plus_fee_is_amount_regressions() {
         for a in [0i128, 1, 7, 99, 12_345_678, 5_000_000_000] {
             for b in [0u32, 1, 300, 1_000] {
                 assert_eq!(net(a, b).unwrap() + fee(a, b).unwrap(), a);
             }
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn net_plus_fee_is_amount(
+            amount in 0i128..=(i128::MAX / BPS_DENOMINATOR),
+            bps in 0u32..=MAX_FEE_BPS,
+        ) {
+            let f = fee(amount, bps).unwrap();
+            let n = net(amount, bps).unwrap();
+            prop_assert!(f >= 0);
+            prop_assert!(n >= 0);
+            prop_assert_eq!(n + f, amount);
+        }
+
+        #[test]
+        fn fee_is_monotonic_in_amount(
+            a1 in 0i128..=(i128::MAX / BPS_DENOMINATOR),
+            a2 in 0i128..=(i128::MAX / BPS_DENOMINATOR),
+            bps in 0u32..=MAX_FEE_BPS,
+        ) {
+            let (lo, hi) = if a1 <= a2 { (a1, a2) } else { (a2, a1) };
+            prop_assert!(fee(lo, bps).unwrap() <= fee(hi, bps).unwrap());
+        }
+
+        #[test]
+        fn fee_is_monotonic_in_bps(
+            amount in 0i128..=(i128::MAX / BPS_DENOMINATOR),
+            b1 in 0u32..=MAX_FEE_BPS,
+            b2 in 0u32..=MAX_FEE_BPS,
+        ) {
+            let (lo, hi) = if b1 <= b2 { (b1, b2) } else { (b2, b1) };
+            prop_assert!(fee(amount, lo).unwrap() <= fee(amount, hi).unwrap());
         }
     }
 
