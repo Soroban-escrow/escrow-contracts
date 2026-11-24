@@ -424,6 +424,7 @@ pub(crate) fn top_up(
 
 pub(crate) fn expire_dispute(env: Env, caller: Address, bounty_id: u64) -> Result<(), Error> {
     caller.require_auth();
+    storage::get_config(&env)?;
     let mut b = storage::get_bounty(&env, bounty_id)?;
     if b.status != Status::Disputed {
         return Err(Error::InvalidStatus);
@@ -444,6 +445,7 @@ pub(crate) fn expire_dispute(env: Env, caller: Address, bounty_id: u64) -> Resul
 
 pub(crate) fn claim(env: Env, winner: Address, bounty_id: u64) -> Result<(), Error> {
     winner.require_auth();
+    storage::get_config(&env)?;
     let mut record = storage::get_claim(&env, bounty_id).ok_or(Error::NothingToClaim)?;
     if record.claimed {
         return Err(Error::AlreadyClaimed);
@@ -545,6 +547,7 @@ pub(crate) fn quote_fee(_env: Env, amount: i128, fee_bps: u32) -> Result<(i128, 
 }
 
 pub(crate) fn bump(env: Env, bounty_ids: Vec<u64>) -> Result<(), Error> {
+    storage::get_config(&env)?;
     if bounty_ids.len() > MAX_BUMP_LIMIT {
         return Err(Error::AmountTooLarge);
     }

@@ -654,3 +654,205 @@ fn withdraw_fees_auth_and_sweep() {
     assert_eq!(c.bal(&c.token, &c.treasury), 6 * UNIT);
     assert_eq!(c.client.get_totals(&c.token).accrued_fees, 0);
 }
+
+#[test]
+fn all_state_changing_entry_points_before_init_return_not_initialized() {
+    let env = soroban_sdk::Env::default();
+    env.mock_all_auths();
+    let id = env.register(BountyEscrow, ());
+    let cl = BountyEscrowClient::new(&env, &id);
+
+    let a = Address::generate(&env);
+    let b = Address::generate(&env);
+    let tok = Address::generate(&env);
+    let hash = BytesN::from_array(&env, &[0u8; 32]);
+    let winners = soroban_sdk::vec![
+        &env,
+        crate::WinnerShare {
+            winner: b.clone(),
+            share_bps: 10_000,
+        }
+    ];
+    let bump_ids = soroban_sdk::vec![&env, 1u64];
+
+    let cases: [(&str, Error); 31] = [
+        // Admin entry points
+        (
+            "set_token",
+            cl.try_set_token(&a, &tok, &1, &UNIT, &None)
+                .unwrap_err()
+                .unwrap(),
+        ),
+        (
+            "remove_token",
+            cl.try_remove_token(&a, &tok).unwrap_err().unwrap(),
+        ),
+        ("set_fee", cl.try_set_fee(&a, &100).unwrap_err().unwrap()),
+        (
+            "set_relayer",
+            cl.try_set_relayer(&a, &b).unwrap_err().unwrap(),
+        ),
+        (
+            "set_arbiter",
+            cl.try_set_arbiter(&a, &b).unwrap_err().unwrap(),
+        ),
+        (
+            "set_treasury",
+            cl.try_set_treasury(&a, &b).unwrap_err().unwrap(),
+        ),
+        ("set_grace", cl.try_set_grace(&a, &1).unwrap_err().unwrap()),
+        (
+            "set_durations",
+            cl.try_set_durations(&a, &1, &2).unwrap_err().unwrap(),
+        ),
+        ("set_admin", cl.try_set_admin(&a, &b).unwrap_err().unwrap()),
+        ("pause", cl.try_pause(&a).unwrap_err().unwrap()),
+        ("unpause", cl.try_unpause(&a).unwrap_err().unwrap()),
+        (
+            "set_dispute_timeout",
+            cl.try_set_dispute_timeout(&a, &1).unwrap_err().unwrap(),
+        ),
+        (
+            "set_relayer_limit",
+            cl.try_set_relayer_limit(&a, &tok, &1, &UNIT)
+                .unwrap_err()
+                .unwrap(),
+        ),
+        (
+            "set_upgrade_delay",
+            cl.try_set_upgrade_delay(&a, &1).unwrap_err().unwrap(),
+        ),
+        (
+            "propose_upgrade",
+            cl.try_propose_upgrade(&a, &hash).unwrap_err().unwrap(),
+        ),
+        (
+            "execute_upgrade",
+            cl.try_execute_upgrade(&a).unwrap_err().unwrap(),
+        ),
+        (
+            "cancel_upgrade",
+            cl.try_cancel_upgrade(&a).unwrap_err().unwrap(),
+        ),
+        (
+            "withdraw_fees",
+            cl.try_withdraw_fees(&a, &tok).unwrap_err().unwrap(),
+        ),
+        ("upgrade", cl.try_upgrade(&a, &hash).unwrap_err().unwrap()),
+        // Bounty lifecycle & keeper entry points
+        (
+            "fund_bounty",
+            cl.try_fund_bounty(&crate::FundBountyParams {
+                maintainer: a.clone(),
+                repo_id: REPO,
+                issue: 1,
+                token: tok.clone(),
+                amount: UNIT,
+                deadline: DAY,
+                relayer_allowed: true,
+            })
+            .unwrap_err()
+            .unwrap(),
+        ),
+        (
+            "release",
+            cl.try_release(&a, &1, &b).unwrap_err().unwrap(),
+        ),
+        (
+            "release_split",
+            cl.try_release_split(&a, &1, &winners)
+                .unwrap_err()
+                .unwrap(),
+        ),
+        ("refund", cl.try_refund(&a, &1).unwrap_err().unwrap()),
+        (
+            "open_dispute",
+            cl.try_open_dispute(&a, &1).unwrap_err().unwrap(),
+        ),
+        (
+            "resolve",
+            cl.try_resolve(&a, &1, &Some(b.clone()), &5_000)
+                .unwrap_err()
+                .unwrap(),
+        ),
+        (
+            "resolve_with_evidence",
+            cl.try_resolve_with_evidence(&a, &1, &Some(b), &5_000, &hash)
+                .unwrap_err()
+                .unwrap(),
+        ),
+        (
+            "extend_deadline",
+            cl.try_extend_deadline(&a, &1, &(2 * DAY))
+                .unwrap_err()
+                .unwrap(),
+        ),
+        (
+            "top_up",
+            cl.try_top_up(&a, &1, &UNIT).unwrap_err().unwrap(),
+        ),
+        (
+            "expire_dispute",
+            cl.try_expire_dispute(&a, &1).unwrap_err().unwrap(),
+        ),
+        ("claim", cl.try_claim(&a, &1).unwrap_err().unwrap()),
+        ("bump", cl.try_bump(&bump_ids).unwrap_err().unwrap()),
+    ];
+
+    for (name, err) in cases {
+        assert_eq!(
+            err,
+            Error::NotInitialized,
+            "{name} before init should return NotInitialized"
+        );
+    }
+}
+
+/// Documents pre-init behaviour of every read-only view:
+/// - `get_config`: returns `Error::NotInitialized`
+/// - bounty-keyed views (`get_bounty`, `refundable_at`, `quote_release`, `quote_resolve`): return `Error::BountyNotFound`
+/// - `quote_fee`: pure arithmetic, succeeds before init
+/// - collection/default views (`active_bounty`, `get_totals`, `get_token`, `get_dispute_timeout`, `bounty_count`, `get_bounties`): return `None`, zero/default, or empty
+#[test]
+fn views_before_init_return_documented_errors_or_defaults() {
+    let env = soroban_sdk::Env::default();
+    let id = env.register(BountyEscrow, ());
+    let cl = BountyEscrowClient::new(&env, &id);
+    let tok = Address::generate(&env);
+
+    // Views that return typed errors before init
+    assert_eq!(
+        cl.try_get_config().unwrap_err().unwrap(),
+        Error::NotInitialized
+    );
+    assert_eq!(
+        cl.try_get_bounty(&1).unwrap_err().unwrap(),
+        Error::BountyNotFound
+    );
+    assert_eq!(
+        cl.try_refundable_at(&1).unwrap_err().unwrap(),
+        Error::BountyNotFound
+    );
+    assert_eq!(
+        cl.try_quote_release(&1).unwrap_err().unwrap(),
+        Error::BountyNotFound
+    );
+    assert_eq!(
+        cl.try_quote_resolve(&1, &5_000).unwrap_err().unwrap(),
+        Error::BountyNotFound
+    );
+
+    // Pure math view succeeds without contract state
+    assert_eq!(cl.quote_fee(&1_000_000, &300), (970_000, 30_000));
+
+    // Views that return None / defaults / empty before init
+    assert_eq!(cl.active_bounty(&REPO, &1), None);
+    assert_eq!(cl.get_totals(&tok), Totals::default());
+    assert_eq!(cl.get_token(&tok), None);
+    assert_eq!(
+        cl.get_dispute_timeout(),
+        crate::storage::DEFAULT_DISPUTE_TIMEOUT_SECS
+    );
+    assert_eq!(cl.bounty_count(), 0);
+    assert!(cl.get_bounties(&1, &10).is_empty());
+}

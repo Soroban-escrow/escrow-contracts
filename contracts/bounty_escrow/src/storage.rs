@@ -62,6 +62,8 @@ pub fn has_config(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::Config)
 }
 
+/// Loads the global contract configuration and extends instance TTL, or returns
+/// `Error::NotInitialized` if `init` has not yet been called.
 pub fn get_config(env: &Env) -> Result<Config, Error> {
     bump_instance(env);
     env.storage()
