@@ -146,3 +146,21 @@ fn grace_snapshot_at_funding_time_isolates_existing_bounty() {
     c.set_time(expected_refundable);
     c.client.refund(&c.maintainer, &id);
 }
+
+#[test]
+fn refund_returns_overflow_when_deadline_plus_grace_overflows() {
+    let c = Ctx::new();
+    // Configure grace_secs so deadline + grace_secs overflows u64::MAX.
+    c.client.set_grace(&c.admin, &u64::MAX);
+    let id = c.fund(1);
+
+    let r = c.client.try_refund(&c.maintainer, &id);
+    assert_eq!(r.unwrap_err().unwrap(), Error::Overflow);
+    assert_eq!(
+        c.client.try_refundable_at(&id).unwrap_err().unwrap(),
+        Error::Overflow
+    );
+    assert_eq!(c.client.get_bounty(&id).status, Status::Open);
+    assert_eq!(c.client.active_bounty(&REPO, &1), Some(id));
+    c.assert_invariant(&c.token);
+}
