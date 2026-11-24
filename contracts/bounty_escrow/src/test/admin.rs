@@ -427,6 +427,64 @@ fn setters_emit_events() {
     assert!(!c.client.get_config().paused);
 }
 
+#[test]
+fn pause_and_unpause_are_idempotent_and_emit_events() {
+    let c = Ctx::new();
+    let paused_event = crate::events::Paused {}.to_xdr(&c.env, &c.client.address);
+    let unpaused_event = crate::events::Unpaused {}.to_xdr(&c.env, &c.client.address);
+
+    // Unpausing while already unpaused (initial state) succeeds and emits 1 Unpaused event.
+    assert!(!c.client.get_config().paused);
+    assert_eq!(c.client.try_unpause(&c.admin), Ok(Ok(())));
+    let all = c.env.events().all();
+    assert_eq!(all.events().len(), 1);
+    assert_eq!(
+        all.events().iter().filter(|e| *e == &unpaused_event).count(),
+        1
+    );
+    assert!(!c.client.get_config().paused);
+
+    // First pause sets paused = true and emits 1 Paused event.
+    assert_eq!(c.client.try_pause(&c.admin), Ok(Ok(())));
+    let all = c.env.events().all();
+    assert_eq!(all.events().len(), 1);
+    assert_eq!(
+        all.events().iter().filter(|e| *e == &paused_event).count(),
+        1
+    );
+    assert!(c.client.get_config().paused);
+
+    // Second pause (while already paused) succeeds, keeps paused = true, and emits 1 Paused event.
+    assert_eq!(c.client.try_pause(&c.admin), Ok(Ok(())));
+    let all = c.env.events().all();
+    assert_eq!(all.events().len(), 1);
+    assert_eq!(
+        all.events().iter().filter(|e| *e == &paused_event).count(),
+        1
+    );
+    assert!(c.client.get_config().paused);
+
+    // First unpause sets paused = false and emits 1 Unpaused event.
+    assert_eq!(c.client.try_unpause(&c.admin), Ok(Ok(())));
+    let all = c.env.events().all();
+    assert_eq!(all.events().len(), 1);
+    assert_eq!(
+        all.events().iter().filter(|e| *e == &unpaused_event).count(),
+        1
+    );
+    assert!(!c.client.get_config().paused);
+
+    // Second unpause (while already unpaused) succeeds, keeps paused = false, and emits 1 Unpaused event.
+    assert_eq!(c.client.try_unpause(&c.admin), Ok(Ok(())));
+    let all = c.env.events().all();
+    assert_eq!(all.events().len(), 1);
+    assert_eq!(
+        all.events().iter().filter(|e| *e == &unpaused_event).count(),
+        1
+    );
+    assert!(!c.client.get_config().paused);
+}
+
 const WASM: &[u8] = include_bytes!("../../../../target/wasm32v1-none/release/bounty_escrow.wasm");
 
 #[test]
