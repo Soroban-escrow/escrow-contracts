@@ -672,6 +672,8 @@ impl BountyEscrow {
 
     /// Pauses new bounty funding and top-ups; releases, refunds, and dispute resolutions remain active.
     ///
+    /// Idempotent: calling `pause` while already paused succeeds and emits `Paused`.
+    ///
     /// # Caller
     /// Requires authorization from `admin`.
     ///
@@ -686,6 +688,8 @@ impl BountyEscrow {
     }
 
     /// Resumes normal funding and top-up operations after being paused.
+    ///
+    /// Idempotent: calling `unpause` while already unpaused succeeds and emits `Unpaused`.
     ///
     /// # Caller
     /// Requires authorization from `admin`.
