@@ -2,6 +2,9 @@
 resolver = "2"
 members = ["contracts/*"]
 
+[workspace.package]
+license = "Apache-2.0"
+
 [workspace.dependencies]
 soroban-sdk = "=29.0.1"
 

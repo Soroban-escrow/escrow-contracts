@@ -1,4 +1,4 @@
-use std::{fs, string::String, vec::Vec};
+use std::{format, fs, println, string::String, vec, vec::Vec};
 
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
@@ -69,16 +69,16 @@ fn measure_init() -> Measurement {
         env,
         client,
     };
-    c.client.init(
-        &c.admin,
-        &c.relayer,
-        &c.arbiter,
-        &c.treasury,
-        &FEE_BPS,
-        &GRACE,
-        &DAY,
-        &(90 * DAY),
-    );
+    c.client.init(&crate::InitParams {
+        admin: c.admin.clone(),
+        relayer: c.relayer.clone(),
+        arbiter: c.arbiter.clone(),
+        treasury: c.treasury.clone(),
+        fee_bps: FEE_BPS,
+        grace_secs: GRACE,
+        min_duration_secs: DAY,
+        max_duration_secs: 90 * DAY,
+    });
     record("init", &c)
 }
 
@@ -170,7 +170,7 @@ fn measure_expire_dispute() -> Measurement {
 fn measure_set_token() -> Measurement {
     let c = Ctx::new();
     c.client
-        .set_token(&c.admin, &c.token2, &UNIT, &(500 * UNIT));
+        .set_token(&c.admin, &c.token2, &UNIT, &(500 * UNIT), &None);
     record("set_token", &c)
 }
 

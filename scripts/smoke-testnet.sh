@@ -61,6 +61,17 @@ bounty_fee() { inv admin get_bounty --id "$1" | python3 -c 'import json,sys; pri
 # Extract bounty_id from fund_bounty response (returned as a string)
 extract_bounty_id() { python3 -c 'import json,sys; print(int(json.load(sys.stdin)))'; }
 
+# #114: pass FundBountyParams as JSON. The i128 amount must be a JSON string,
+# whereas u64 and bool fields are represented as JSON numbers and booleans.
+fund_params() {
+  local issue=$1 relayer_allowed=$2
+  jq -nc --arg maintainer "$MAINT" --arg token "$NATIVE" \
+    --argjson repo_id 1 --argjson issue "$issue" \
+    --arg amount "$AMOUNT" --argjson deadline "$DL" \
+    --argjson relayer_allowed "$relayer_allowed" \
+    '{maintainer: $maintainer, repo_id: $repo_id, issue: $issue, token: $token, amount: $amount, deadline: $deadline, relayer_allowed: $relayer_allowed}'
+}
+
 AMOUNT=100000000
 FEE_BPS=300        # fee_bps given to init in deploy-testnet.sh; each bounty snapshots it at fund time
 WINNER_BPS=7000    # arbiter split for run B
@@ -79,7 +90,7 @@ CONTRIB=$(a contributor); TREAS=$(a treasury); MAINT=$(a maintainer)
 
 echo "== A: fund -> release"
 K0=$(bal "$ID")
-BOUNTY_A=$(inv maintainer fund_bounty --maintainer "$(a maintainer)" --repo_id 1 --issue "$ISSUE" --token "$NATIVE" --amount "$AMOUNT" --deadline "$DL" --relayer_allowed true | extract_bounty_id)
+BOUNTY_A=$(inv maintainer fund_bounty --params "$(fund_params "$ISSUE" true)" | extract_bounty_id)
 K1=$(bal "$ID")
 assert_delta "A fund: contract received amount" "$AMOUNT" "$K0" "$K1"
 assert_eq "A bounty $BOUNTY_A fee snapshot" "$FEE_BPS" "$(bounty_fee "$BOUNTY_A")"
@@ -92,7 +103,7 @@ assert_delta "A release: contract paid out amount" "-$AMOUNT" "$KA0" "$KA1"
 
 echo "== B: fund -> dispute -> resolve ${WINNER_BPS}/10000 to winner"
 KB0=$(bal "$ID")
-BOUNTY_B=$(inv maintainer fund_bounty --maintainer "$(a maintainer)" --repo_id 1 --issue "$((ISSUE+1))" --token "$NATIVE" --amount "$AMOUNT" --deadline "$DL" --relayer_allowed false | extract_bounty_id)
+BOUNTY_B=$(inv maintainer fund_bounty --params "$(fund_params "$((ISSUE+1))" false)" | extract_bounty_id)
 KB1=$(bal "$ID")
 assert_delta "B fund: contract received amount" "$AMOUNT" "$KB0" "$KB1"
 assert_eq "B bounty $BOUNTY_B fee snapshot" "$FEE_BPS" "$(bounty_fee "$BOUNTY_B")"

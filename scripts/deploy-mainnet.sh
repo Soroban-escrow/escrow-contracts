@@ -97,10 +97,13 @@ read -r -p "Type DEPLOY TO MAINNET to continue: " A
 [[ "$A" == "DEPLOY TO MAINNET" ]] || { echo "aborted" >&2; exit 1; }
 
 ID=$(stellar contract deploy --wasm "$WASM" --source "$ADMIN" --network mainnet)
-stellar contract invoke --id "$ID" --source "$ADMIN" --network mainnet -- init \
-  --admin "$(addr "$ADMIN")" --relayer "$(addr "$RELAYER")" --arbiter "$(addr "$ARBITER")" \
-  --treasury "$(addr "$TREASURY")" --fee_bps "$FEE_BPS" --grace_secs 259200 \
-  --min_duration_secs 86400 --max_duration_secs 7776000
+# Pass the grouped InitParams struct (JSON numbers for u32/u64 fields).
+INIT_PARAMS=$(jq -nc \
+  --arg admin "$(addr "$ADMIN")" --arg relayer "$(addr "$RELAYER")" \
+  --arg arbiter "$(addr "$ARBITER")" --arg treasury "$(addr "$TREASURY")" \
+  --argjson fee_bps "$FEE_BPS" \
+  '{admin: $admin, relayer: $relayer, arbiter: $arbiter, treasury: $treasury, fee_bps: $fee_bps, grace_secs: 259200, min_duration_secs: 86400, max_duration_secs: 7776000}')
+stellar contract invoke --id "$ID" --source "$ADMIN" --network mainnet -- init --params "$INIT_PARAMS"
 # max_amount starts at 500 USDC (7 decimals); raising it needs the human.
 stellar contract invoke --id "$ID" --source "$ADMIN" --network mainnet -- set_token \
   --admin "$(addr "$ADMIN")" --token "$MAINNET_USDC" --min 10000000 --max "$MAX_AMOUNT"

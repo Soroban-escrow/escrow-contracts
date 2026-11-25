@@ -7,6 +7,9 @@ on:
     branches: [fresh-build, main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    # Run every Monday at 07:00 UTC so new advisories are caught on quiet weeks.
+    - cron: "0 7 * * 1"
 
 # A new push to the same PR (or branch) cancels the run it supersedes.
 concurrency:
@@ -101,6 +104,9 @@ jobs:
 
   audit:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # Cache the cargo-audit binary only. The advisory database is fetched fresh on every run.
@@ -110,7 +116,20 @@ jobs:
           key: cargo-audit-${{ runner.os }}-0.23.0-${{ hashFiles('rust-toolchain.toml') }}
       - name: install cargo-audit
         run: command -v cargo-audit || cargo install --locked cargo-audit --version 0.23.0
+      # .cargo/audit.toml exceptions are honoured automatically by cargo-audit.
       - run: cargo audit
+      - name: open issue on advisory failure (scheduled runs only)
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Security advisory detected by scheduled cargo audit (${new Date().toISOString().slice(0,10)})`,
+              body: `The weekly \`cargo audit\` run failed, indicating a new advisory affects a dependency.\n\nSee the failed run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              labels: ["security"],
+            });
 
   deny:
     runs-on: ubuntu-latest

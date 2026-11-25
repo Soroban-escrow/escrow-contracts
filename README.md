@@ -43,10 +43,11 @@ decides *whether a payment is allowed at all*, and that is the part you should a
 | | |
 |---|---|
 | **Deployed on testnet** | [`CCEKBPYC…ZF3J4RKN`](https://stellar.expert/explorer/testnet/contract/CCEKBPYCWKNTXIQLXJHVAF7RYGUZZ6MITA7VVJBOK5BHXUO44ELZ4F4V) |
-| **Size** | 35,115 bytes of Wasm (40 KiB CI gate), 30 entry points |
+| **Size** | 32,783 bytes of Wasm (40 KiB CI gate), 44 entry points |
 | **Tests** | 63, including a property test of the funds invariant |
 | **Built with** | Rust 1.99.1 · `soroban-sdk` 29.0.1 · target `wasm32v1-none` |
 | **Audited** | ❌ **No.** See [Before mainnet](#before-mainnet). |
+| **License** | [Apache-2.0](LICENSE) |
 
 ---
 
@@ -62,6 +63,8 @@ make check   # build, reproducible build, docs, fmt, clippy, tests and shellchec
 `make check` runs the same order as CI. `make ci` additionally runs `cargo deny check`
 and `cargo audit`, so install those two tools first. The individual targets are listed in
 `make help`; `cargo llvm-cov --package bounty_escrow` remains the optional coverage command.
+
+> **Contract ABI change (#114):** `init` now accepts `InitParams` and `fund_bounty` accepts `FundBountyParams` as single `#[contracttype]` arguments. The old positional calls will not work against newly built Wasm. Rebuild and regenerate the TypeScript bindings using `OUTPUT_DIR=../skillescrow-app/packages/contract-client ./scripts/bindings.sh` before deploying clients. See [ABI migration](docs/CONTRACT.md#abi-change-grouped-input-structs-114).
 
 ### Windows
 
@@ -87,7 +90,7 @@ Two gotchas on Windows:
 ```bash
 ./scripts/deploy-testnet.sh    # deploy + init + allowlist native XLM, writes deployments/testnet.json
 ./scripts/smoke-testnet.sh     # fund → release and fund → dispute → resolve, against the real network
-./scripts/bindings.sh          # regenerate the TypeScript client into ../skillescrow-app
+./scripts/bindings.sh          # regenerate TypeScript client for the grouped-params ABI into ../skillescrow-app
 ```
 
 `deploy-testnet.sh` refuses to run if its deployment record already exists, because a new deploy would
@@ -134,8 +137,9 @@ Example: `FEE_BPS=500 GRACE_SECS=86400 ./scripts/deploy-testnet.sh`
 
 | Function | Who may call it | What the contract checks |
 |---|---|---|
-| `fund_bounty(maintainer, repo_id, issue, token, amount, deadline, relayer_allowed) -> id` | maintainer | Not paused · token allowlisted · `min ≤ amount ≤ max` · deadline within the allowed window · **no active bounty already on this issue**. Snapshots the current fee. |
+| fund_bounty(params: FundBountyParams) -> id | maintainer | Not paused · token allowlisted · `min ≤ amount ≤ max` · deadline within the allowed window · **no active bounty already on this issue**. Snapshots the current fee. |
 | `release(caller, bounty_id, winner)` | maintainer, **or** the relayer if `relayer_allowed` | Status is `Open` · the winner is neither the maintainer nor the contract itself. Allowed *after* the deadline too, as long as no refund has happened. |
+| `release_split(caller, bounty_id, winners)` | same as `release` | 1–5 unique winners; shares total 10,000 bps. One fee is charged and rounding dust goes to the first winner. |
 | `refund(maintainer, bounty_id)` | maintainer only | Status is `Open` · `now ≥ deadline + grace`. Returns the full amount, **no fee**. Works while paused. |
 | `open_dispute(caller, bounty_id)` | maintainer or arbiter | Status is `Open`. Freezes release *and* refund. |
 | `resolve(arbiter, bounty_id, winner, winner_bps)` | arbiter only | Status is `Disputed` · `winner_bps ≤ 10000` · a winner is required when `winner_bps > 0`. Works while paused. If the winner's transfer fails (for example, no trustline), the net becomes a claim instead of reverting. |
@@ -151,8 +155,12 @@ Example: `FEE_BPS=500 GRACE_SECS=86400 ./scripts/deploy-testnet.sh`
 
 ### Administration
 
+For the signer and argument coverage of every state-changing call, see
+[the signature authorisation reference](docs/CONTRACT.md#signature-authorisation).
+
 `init` · `set_token` · `remove_token` · `set_fee` · `set_relayer` · `set_arbiter` · `set_treasury` ·
-`set_grace` · `set_durations` · `set_admin` · `pause` · `unpause` · `upgrade`
+`set_grace` · `set_durations` · `set_relayer_limit` · `set_admin` · `pause` · `unpause` ·
+`propose_upgrade` · `execute_upgrade` · `cancel_upgrade`
 
 `set_admin` requires **both** the current and the incoming admin to sign, so a typo cannot lock the
 contract. `pause` blocks `fund_bounty` and nothing else.
@@ -162,19 +170,22 @@ contract. `pause` blocks `fund_bounty` and nothing else.
 Stable numbering — **never renumbered after deploy**, because clients map on the number:
 
 ```
- 1 AlreadyInitialized    7 AmountTooLarge     13 SelfPayout
- 2 NotInitialized        8 InvalidDeadline    14 InvalidSplit
- 3 Unauthorized          9 IssueAlreadyFunded 15 InvalidFee
- 4 Paused               10 BountyNotFound     16 Overflow
- 5 TokenNotAllowed      11 InvalidStatus      17 RelayerNotAllowed
- 6 AmountTooSmall       12 DeadlineNotReached
-18 TopUpLimitReached    24 UnexpectedTransferAmount
+ 1 AlreadyInitialized    7 AmountTooLarge     13 SelfPayout                 19 DisputeNotExpired        25 InvalidWinners           31 InvalidLimits
+ 2 NotInitialized        8 InvalidDeadline    14 InvalidSplit               20 DisputeAlreadyUsed       26 UpgradeNotReady
+ 3 Unauthorized          9 IssueAlreadyFunded 15 InvalidFee                 21 NothingToClaim           27 NoPendingUpgrade
+ 4 Paused               10 BountyNotFound     16 Overflow                   22 AlreadyClaimed           28 UpgradeDelayCannotDecrease
+ 5 TokenNotAllowed      11 InvalidStatus      17 RelayerNotAllowed          23 ConflictOfInterest       29 InvalidKey
+ 6 AmountTooSmall       12 DeadlineNotReached 18 TopUpLimitReached          24 RelayerLimitExceeded     30 ContractAddressRejected
 ```
+
+See [`docs/CONTRACT.md`](docs/CONTRACT.md#error-codes--client-recovery-actions) for the complete reference table detailing causes, affected entry points, and suggested client UI recovery actions for every error code.
 
 ### Events
 
 Every state change emits one, with enough data that an indexer never needs a follow-up read:
-`funded` · `released` (with `deferred`) · `refunded` · `disputed` · `resolved` (with `winner_deferred`) · `deadline_extended` · `topped_up` · `dispute_expired` · `claimed` · `config` · `paused` · `unpaused` · `upgraded`.
+`funded` · `released` (with `deferred`) · `released_split` · `refunded` · `disputed` · `resolved` (with `winner_deferred`) · `evidence` · `deadline_extended` · `topped_up` · `dispute_expired` · `claimed` · `initialized` · `config` · `token_set` · `token_removed` · `paused` · `unpaused` · `upgrade_proposed` · `upgrade_cancelled` · `upgraded`.
+
+See [`docs/EVENTS.md`](docs/EVENTS.md) for full topic layouts, field definitions, and example JSON payloads for every event.
 
 ---
 
@@ -226,8 +237,8 @@ Stated plainly, because an escrow contract is only as honest as its documentatio
 
 | Role | Power | Bound by |
 |---|---|---|
-| **Admin** | Changes config, pauses funding, and **can upgrade the contract code** — so in effect controls escrowed funds | Nothing in the contract. **Must become a multisig before mainnet.** |
-| **Relayer** | Releases bounties automatically when a PR is merged | Only bounties where the maintainer set `relayer_allowed`; only to a non-maintainer address; bounded by the per-token `max_amount` |
+| **Admin** | Changes config, pauses funding, and proposes contract upgrades | Upgrades wait at least `max_duration + grace`; the delay can only increase. **Must still become a multisig before mainnet.** |
+| **Relayer** | Releases bounties automatically when a PR is merged | Only opted-in bounties; optional rolling per-token release cap; maintainer releases bypass the cap |
 | **Arbiter** | Opens a dispute on any `Open` bounty and splits it | Cannot touch an undisputed bounty; splits are capped at 100% |
 | **Maintainer** | Funds, releases, refunds, disputes | Cannot pay themselves; cannot refund before `deadline + grace` |
 
@@ -240,6 +251,8 @@ Opt out and the relayer key is worthless against that bounty; the maintainer sig
 ---
 
 ## Testing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for toolchain setup, build-before-test ordering, stability invariants, and full CI pipeline details.
 
 ```bash
 make check
@@ -298,7 +311,7 @@ The clippy lint set (`arithmetic_side_effects`, the `cast_*` lints, `unwrap_used
 Run `scripts/deploy-mainnet.sh --dry-run` first. It enforces the items marked **check**; the rest are manual.
 
 - [ ] **External audit.** This contract has not had one. *(manual)*
-- [ ] Admin moved to a multisig account, since it can upgrade the code. *(check: admin is a multisig)*
+- [ ] Admin moved to a multisig account and the upgrade delay is long enough for users to exit. *(check: admin is a multisig)*
 - [ ] Per-token `max_amount` starting at 500 USDC. *(check: MAX_AMOUNT within cap)*
 - [ ] USDC contract id verified against Circle's own documentation. *(check: MAINNET_USDC matches the derived id; the issuer constant itself is manual)*
 - [ ] Admin, arbiter, treasury and relayer are four different accounts. *(check)*
@@ -327,5 +340,18 @@ It fetches the Wasm running at the recorded contract id and compares its hash wi
 | | |
 |---|---|
 | **Application** | [Soroban-escrow/escrow-app](https://github.com/Soroban-escrow/escrow-app) — API, worker, web app, AI review |
-| **Contract reference** | [`docs/CONTRACT.md`](docs/CONTRACT.md) — every entry point, error, event and TTL number |
+| **Contract reference** | [`docs/CONTRACT.md`](docs/CONTRACT.md) — every entry point, error, event, fee example and TTL number |
+| **Events reference** | [`docs/EVENTS.md`](docs/EVENTS.md) — indexer event topics, fields, and example payloads |
+| **Contributing** | [`CONTRIBUTING.md`](CONTRIBUTING.md) — toolchain, build order, stability invariants, and CI |
+| **Changelog** | [`CHANGELOG.md`](CHANGELOG.md) — contract interface versions and breaking changes |
+| **Operations runbook** | [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — pause, relayer rotation, upgrades and incident response |
+| **Threat model** | [`docs/THREAT.md`](docs/THREAT.md) — per-role, token and network risks |
+| **Security policy** | [`SECURITY.md`](SECURITY.md) — vulnerability disclosure process and private reporting channel |
+| **License** | [`LICENSE`](LICENSE) — Apache License 2.0 terms |
 | **Build log** | [`docs/PROGRESS.md`](docs/PROGRESS.md) |
+
+---
+
+## License
+
+This repository and its smart contracts are licensed under the [Apache-2.0 License](LICENSE).

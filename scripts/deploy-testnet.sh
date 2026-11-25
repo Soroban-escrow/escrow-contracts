@@ -34,10 +34,14 @@ echo "  token min=$TOKEN_MIN max=$TOKEN_MAX"
 echo "  usdc=${TESTNET_USDC:-<unset>} admin=$ADMIN arbiter=$ARBITER treasury=$TREASURY relayer=$RELAYER"
 ID=$(stellar contract deploy --wasm "$W" --source "$ADMIN" --network "$NETWORK")
 addr() { stellar keys address "$1"; }
-stellar contract invoke --id "$ID" --source "$ADMIN" --network "$NETWORK" -- init \
-  --admin "$(addr "$ADMIN")" --relayer "$(addr "$RELAYER")" --arbiter "$(addr "$ARBITER")" \
-  --treasury "$(addr "$TREASURY")" --fee_bps "$FEE_BPS" --grace_secs "$GRACE_SECS" \
-  --min_duration_secs "$MIN_DURATION_SECS" --max_duration_secs "$MAX_DURATION_SECS"
+# #114: init now accepts one contracttype struct as --params (a JSON object).
+INIT_PARAMS=$(jq -nc \
+  --arg admin "$(addr "$ADMIN")" --arg relayer "$(addr "$RELAYER")" \
+  --arg arbiter "$(addr "$ARBITER")" --arg treasury "$(addr "$TREASURY")" \
+  --argjson fee_bps "$FEE_BPS" --argjson grace_secs "$GRACE_SECS" \
+  --argjson min_duration_secs "$MIN_DURATION_SECS" --argjson max_duration_secs "$MAX_DURATION_SECS" \
+  '{admin: $admin, relayer: $relayer, arbiter: $arbiter, treasury: $treasury, fee_bps: $fee_bps, grace_secs: $grace_secs, min_duration_secs: $min_duration_secs, max_duration_secs: $max_duration_secs}')
+stellar contract invoke --id "$ID" --source "$ADMIN" --network "$NETWORK" -- init --params "$INIT_PARAMS"
 NATIVE=$(stellar contract id asset --asset native --network "$NETWORK")
 for T in ${TESTNET_USDC:+"$TESTNET_USDC"} "$NATIVE"; do
   stellar contract invoke --id "$ID" --source "$ADMIN" --network "$NETWORK" -- set_token \

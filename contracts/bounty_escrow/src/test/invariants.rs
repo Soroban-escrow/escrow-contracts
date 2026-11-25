@@ -31,11 +31,24 @@ enum Op {
     Wait {
         days: u64,
     },
+    WithdrawFees {
+        tok: bool,
+        by_admin: bool,
+    },
+}
+
+#[test]
+fn terminal_status_classification() {
+    assert!(!Status::Open.is_terminal());
+    assert!(!Status::Disputed.is_terminal());
+    assert!(Status::Released.is_terminal());
+    assert!(Status::Refunded.is_terminal());
+    assert!(Status::Resolved.is_terminal());
 }
 
 fn op() -> impl Strategy<Value = Op> {
     prop_oneof![
-        (0u64..6, 1i128..400, any::<bool>(), any::<bool>()).prop_map(
+        (1u64..6, 1i128..400, any::<bool>(), any::<bool>()).prop_map(
             |(issue, units, tok, relayer)| Op::Fund {
                 issue,
                 units,
@@ -48,6 +61,8 @@ fn op() -> impl Strategy<Value = Op> {
         (0usize..8).prop_map(|pick| Op::Dispute { pick }),
         (0usize..8, 0u32..=10_000).prop_map(|(pick, bps)| Op::Resolve { pick, bps }),
         (0u64..40).prop_map(|days| Op::Wait { days }),
+        (any::<bool>(), any::<bool>())
+            .prop_map(|(tok, by_admin)| Op::WithdrawFees { tok, by_admin }),
     ]
 }
 
@@ -69,9 +84,15 @@ proptest! {
             match o {
                 Op::Fund { issue, units, tok, relayer } => {
                     let t = if tok { &c.token } else { &c.token2 };
-                    if let Ok(Ok(id)) = c.client.try_fund_bounty(
-                        &c.maintainer, &REPO, &issue, t, &(units * UNIT),
-                        &(c.now() + 7 * DAY), &relayer) {
+                    if let Ok(Ok(id)) = c.client.try_fund_bounty(&crate::FundBountyParams {
+                        maintainer: c.maintainer.clone(),
+                        repo_id: REPO,
+                        issue,
+                        token: (*t).clone(),
+                        amount: units * UNIT,
+                        deadline: c.now() + 7 * DAY,
+                        relayer_allowed: relayer,
+                    }) {
                         ids.push(id);
                     }
                 }
@@ -91,6 +112,11 @@ proptest! {
                     let _ = c.client.try_resolve(&c.arbiter, &ids[pick % ids.len()], &w, &bps);
                 }
                 Op::Wait { days } => c.set_time(c.now() + days * DAY),
+                Op::WithdrawFees { tok, by_admin } => {
+                    let t = if tok { &c.token } else { &c.token2 };
+                    let who = if by_admin { &c.admin } else { &c.treasury };
+                    let _ = c.client.try_withdraw_fees(who, t);
+                }
                 _ => {}
             }
             c.assert_invariant(&c.token);
@@ -99,7 +125,7 @@ proptest! {
             // issue lock is held exactly while a bounty is Open/Disputed
             for id in &ids {
                 let b = c.client.get_bounty(id);
-                let live = matches!(b.status, Status::Open | Status::Disputed);
+                let live = !b.status.is_terminal();
                 if live {
                     prop_assert_eq!(c.client.active_bounty(&b.repo_id, &b.issue), Some(*id));
                 }

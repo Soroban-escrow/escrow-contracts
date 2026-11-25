@@ -1,4 +1,14 @@
-use soroban_sdk::{contractevent, Address, BytesN, Symbol};
+use soroban_sdk::{contractevent, Address, BytesN, Symbol, Vec};
+
+use crate::types::SplitPayout;
+
+#[contractevent(topics = ["bounty", "fees_withdrawn"])]
+pub struct FeesWithdrawn {
+    #[topic]
+    pub token: Address,
+    pub treasury: Address,
+    pub amount: i128,
+}
 
 #[contractevent(topics = ["bounty", "funded"])]
 pub struct Funded {
@@ -26,6 +36,15 @@ pub struct Released {
     pub deferred: bool,
 }
 
+#[contractevent(topics = ["bounty", "released_split"])]
+pub struct ReleasedSplit {
+    #[topic]
+    pub id: u64,
+    pub payouts: Vec<SplitPayout>,
+    pub fee: i128,
+    pub caller: Address,
+}
+
 #[contractevent(topics = ["bounty", "refunded"])]
 pub struct Refunded {
     #[topic]
@@ -51,10 +70,41 @@ pub struct Resolved {
     pub winner_deferred: bool,
 }
 
+#[contractevent(topics = ["bounty", "initialized"])]
+pub struct Initialized {
+    #[topic]
+    pub admin: Address,
+    #[topic]
+    pub relayer: Address,
+    #[topic]
+    pub arbiter: Address,
+    #[topic]
+    pub treasury: Address,
+    pub fee_bps: u32,
+    pub grace_secs: u64,
+    pub min_duration_secs: u64,
+    pub max_duration_secs: u64,
+    pub paused: bool,
+}
+
 #[contractevent(topics = ["bounty", "config"])]
 pub struct ConfigChanged {
     #[topic]
     pub field: Symbol,
+}
+
+#[contractevent(topics = ["bounty", "token_set"])]
+pub struct TokenSet {
+    #[topic]
+    pub token: Address,
+    pub min: i128,
+    pub max: i128,
+}
+
+#[contractevent(topics = ["bounty", "token_removed"])]
+pub struct TokenRemoved {
+    #[topic]
+    pub token: Address,
 }
 
 #[contractevent(topics = ["bounty", "paused"])]
@@ -65,6 +115,17 @@ pub struct Unpaused {}
 
 #[contractevent(topics = ["bounty", "upgraded"])]
 pub struct Upgraded {
+    pub wasm_hash: BytesN<32>,
+}
+
+#[contractevent(topics = ["bounty", "upgrade_proposed"])]
+pub struct UpgradeProposed {
+    pub wasm_hash: BytesN<32>,
+    pub eta: u64,
+}
+
+#[contractevent(topics = ["bounty", "upgrade_cancelled"])]
+pub struct UpgradeCancelled {
     pub wasm_hash: BytesN<32>,
 }
 
