@@ -112,6 +112,25 @@ fn release_after_deadline_before_refund_works() {
 }
 
 #[test]
+fn release_keeps_working_while_paused() {
+    let c = Ctx::new();
+    let id = c.fund(1);
+    c.client.pause(&c.admin);
+    c.client.release(&c.maintainer, &id, &c.winner);
+    assert_eq!(c.client.get_bounty(&id).status, Status::Released);
+    let blocked = c.client.try_fund_bounty(
+        &c.maintainer,
+        &REPO,
+        &2,
+        &c.token,
+        &UNIT,
+        &(c.now() + 7 * DAY),
+        &true,
+    );
+    assert_eq!(blocked.unwrap_err().unwrap(), Error::Paused);
+}
+
+#[test]
 fn double_release_rejected() {
     let c = Ctx::new();
     let id = c.fund(1);

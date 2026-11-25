@@ -21,6 +21,16 @@ fn happy_path_stores_bounty_and_moves_tokens() {
 }
 
 #[test]
+fn get_bounty_by_issue_returns_active_only() {
+    let c = Ctx::new();
+    assert_eq!(c.client.get_bounty_by_issue(&REPO, &7), None);
+    let id = c.fund(7);
+    assert_eq!(c.client.get_bounty_by_issue(&REPO, &7).unwrap().id, id);
+    c.client.release(&c.maintainer, &id, &c.winner);
+    assert_eq!(c.client.get_bounty_by_issue(&REPO, &7), None);
+}
+
+#[test]
 fn rejects_when_paused() {
     let c = Ctx::new();
     c.client.pause(&c.admin);
@@ -56,17 +66,15 @@ fn rejects_non_allowlisted_token() {
 fn rejects_below_min_and_above_max() {
     let c = Ctx::new();
     let d = c.now() + 2 * DAY;
-    let lo = c
-        .client
-        .try_fund_bounty(&crate::FundBountyParams {
-            maintainer: c.maintainer.clone(),
-            repo_id: REPO,
-            issue: 1,
-            token: c.token.clone(),
-            amount: UNIT - 1,
-            deadline: d,
-            relayer_allowed: true,
-        });
+    let lo = c.client.try_fund_bounty(&crate::FundBountyParams {
+        maintainer: c.maintainer.clone(),
+        repo_id: REPO,
+        issue: 1,
+        token: c.token.clone(),
+        amount: UNIT - 1,
+        deadline: d,
+        relayer_allowed: true,
+    });
     assert_eq!(lo.unwrap_err().unwrap(), Error::AmountTooSmall);
     let hi = c.client.try_fund_bounty(&crate::FundBountyParams {
         maintainer: c.maintainer.clone(),
@@ -79,26 +87,24 @@ fn rejects_below_min_and_above_max() {
     });
     assert_eq!(hi.unwrap_err().unwrap(), Error::AmountTooLarge);
     // boundaries are inclusive
-    c.client
-        .fund_bounty(&crate::FundBountyParams {
-            maintainer: c.maintainer.clone(),
-            repo_id: REPO,
-            issue: 1,
-            token: c.token.clone(),
-            amount: UNIT,
-            deadline: d,
-            relayer_allowed: true,
-        });
-    c.client
-        .fund_bounty(&crate::FundBountyParams {
-            maintainer: c.maintainer.clone(),
-            repo_id: REPO,
-            issue: 2,
-            token: c.token.clone(),
-            amount: 500 * UNIT,
-            deadline: d,
-            relayer_allowed: true,
-        });
+    c.client.fund_bounty(&crate::FundBountyParams {
+        maintainer: c.maintainer.clone(),
+        repo_id: REPO,
+        issue: 1,
+        token: c.token.clone(),
+        amount: UNIT,
+        deadline: d,
+        relayer_allowed: true,
+    });
+    c.client.fund_bounty(&crate::FundBountyParams {
+        maintainer: c.maintainer.clone(),
+        repo_id: REPO,
+        issue: 2,
+        token: c.token.clone(),
+        amount: 500 * UNIT,
+        deadline: d,
+        relayer_allowed: true,
+    });
 }
 
 #[test]
@@ -355,17 +361,15 @@ mod deadline_window {
         c.set_time(u64::MAX - DAY);
         c.client.set_durations(&c.admin, &DAY, &(2 * DAY));
 
-        let got =
-            c.client
-                .try_fund_bounty(&crate::FundBountyParams {
-                    maintainer: c.maintainer.clone(),
-                    repo_id: REPO,
-                    issue: 1,
-                    token: c.token.clone(),
-                    amount: UNIT,
-                    deadline: u64::MAX,
-                    relayer_allowed: false,
-                });
+        let got = c.client.try_fund_bounty(&crate::FundBountyParams {
+            maintainer: c.maintainer.clone(),
+            repo_id: REPO,
+            issue: 1,
+            token: c.token.clone(),
+            amount: UNIT,
+            deadline: u64::MAX,
+            relayer_allowed: false,
+        });
         assert_eq!(got.unwrap_err().unwrap(), Error::Overflow);
     }
 }

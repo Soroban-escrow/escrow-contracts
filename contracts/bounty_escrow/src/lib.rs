@@ -20,11 +20,11 @@ use soroban_sdk::{
 };
 
 pub use errors::Error;
-pub use types::{
-    Bounty, Config, DataKey, FundBountyParams, InitParams, SplitPayout, Status, TokenLimits, Totals,
-    WinnerShare,
-};
 use math::{add, sub};
+pub use types::{
+    Bounty, Config, DataKey, FundBountyParams, InitParams, SplitPayout, Status, TokenLimits,
+    Totals, WinnerShare,
+};
 use types::{
     ClaimRecord, DisputeRecord, PendingUpgrade, RefundSettlement, RelayerLimit, ReleaseSettlement,
     ResolveSettlement,
@@ -72,11 +72,7 @@ enum ReleaseRole {
     Relayer,
 }
 
-fn authorize_release(
-    caller: &Address,
-    b: &Bounty,
-    cfg: &Config,
-) -> Result<ReleaseRole, Error> {
+fn authorize_release(caller: &Address, b: &Bounty, cfg: &Config) -> Result<ReleaseRole, Error> {
     // #101: the maintainer check runs first, so if `cfg.relayer` has been
     // set to this same address, that release takes the maintainer path —
     // `relayer_allowed` and the relayer rate limit are not consulted at all.
@@ -96,7 +92,7 @@ fn authorize_release(
 fn close_bounty(env: &Env, bounty: &mut Bounty, status: Status, winner: Option<Address>) {
     bounty.status = status;
     bounty.winner = winner;
-    storage::set_bounty(env, bounty);
+    storage::set_bounty_state(env, bounty);
     storage::clear_active(env, bounty.repo_id, bounty.issue);
 }
 
@@ -457,6 +453,11 @@ impl BountyEscrow {
     /// - `Error::BountyNotFound`: Bounty does not exist in storage.
     pub fn get_bounty(env: Env, id: u64) -> Result<Bounty, Error> {
         bounty::get_bounty(env, id)
+    }
+
+    /// Returns the active bounty for an issue without extending any storage TTL.
+    pub fn get_bounty_by_issue(env: Env, repo_id: u64, issue: u64) -> Option<Bounty> {
+        bounty::get_bounty_by_issue(env, repo_id, issue)
     }
 
     /// Queries the active bounty identifier for a GitHub repository and issue pair, if one is open.
@@ -889,7 +890,7 @@ fn settle(
     if arbiter != cfg.arbiter {
         return Err(Error::Unauthorized);
     }
-    let mut b = storage::get_bounty(env, bounty_id)?;
+    let mut b = storage::get_bounty(env, bounty_id).ok_or(Error::BountyNotFound)?;
     if b.status != Status::Disputed {
         return Err(Error::InvalidStatus);
     }

@@ -20,7 +20,11 @@ pub struct CtxBuilder {
 
 impl CtxBuilder {
     pub fn new() -> Self {
-        Self { fee_bps: FEE_BPS, min_amount: UNIT, max_amount: 500 * UNIT }
+        Self {
+            fee_bps: FEE_BPS,
+            min_amount: UNIT,
+            max_amount: 500 * UNIT,
+        }
     }
 
     pub fn fee_bps(mut self, fee_bps: u32) -> Self {
@@ -38,7 +42,8 @@ impl CtxBuilder {
         let c = Ctx::new();
         c.client.set_fee(&c.admin, &self.fee_bps);
         for token in [&c.token, &c.token2] {
-            c.client.set_token(&c.admin, token, &self.min_amount, &self.max_amount, &None);
+            c.client
+                .set_token(&c.admin, token, &self.min_amount, &self.max_amount, &None);
         }
         c
     }

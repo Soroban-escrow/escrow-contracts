@@ -1,6 +1,9 @@
 use soroban_sdk::{contracttype, Address, BytesN};
 
-use crate::{math::{add, sub}, Error};
+use crate::{
+    math::{add, sub},
+    Error,
+};
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -44,6 +47,30 @@ pub struct Bounty {
     // (u64 + alignment), reducing rent and CPU on every set_bounty rewrite.
     // Migration cost: a one-time read of the Funded event for each bounty
     // if a historical timestamp is ever needed; not stored on-chain.
+}
+
+/// Immutable terms are kept separately from settlement state so status-only
+/// transitions do not rewrite the full bounty record.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BountyTerms {
+    pub id: u64,
+    pub maintainer: Address,
+    pub repo_id: u64,
+    pub issue: u64,
+    pub token: Address,
+    pub amount: i128,
+    pub fee_bps: u32,
+    pub grace_secs: u64,
+    pub deadline: u64,
+    pub relayer_allowed: bool,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BountyState {
+    pub status: Status,
+    pub winner: Option<Address>,
 }
 
 #[contracttype]
@@ -290,6 +317,8 @@ pub enum DataKey {
     Paused,
     NextId,
     Bounty(u64),
+    BountyTerms(u64),
+    BountyState(u64),
     ActiveByIssue(u64, u64),
     Token(Address),
     Totals(Address),

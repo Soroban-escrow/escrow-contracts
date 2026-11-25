@@ -32,7 +32,7 @@ fn max_duration_bounty_survives_to_deadline_plus_grace() {
     });
 
     // Initial TTL checks
-    let bounty_key = DataKey::Bounty(id);
+    let bounty_key = DataKey::BountyTerms(id);
     let active_key = DataKey::ActiveByIssue(REPO, 101);
     let totals_key = DataKey::Totals(c.token.clone());
 
@@ -109,7 +109,7 @@ fn keeper_bump_is_permissionless_and_extends_ttl() {
     let c = Ctx::new();
     let contract_id = c.client.address.clone();
     let id = c.fund(201);
-    let bounty_key = DataKey::Bounty(id);
+    let bounty_key = DataKey::BountyTerms(id);
 
     // Fast-forward 60 days
     let days_elapsed = 60u32;
@@ -156,7 +156,7 @@ fn terminal_bounties_do_not_bump_on_read() {
     let c = Ctx::new();
     let contract_id = c.client.address.clone();
     let id = c.fund(301);
-    let bounty_key = DataKey::Bounty(id);
+    let bounty_key = DataKey::BountyTerms(id);
 
     // Release the bounty to terminal state
     c.client.release(&c.maintainer, &id, &c.winner);

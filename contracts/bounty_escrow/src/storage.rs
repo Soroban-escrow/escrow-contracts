@@ -2,8 +2,8 @@ use soroban_sdk::{Address, Env, IntoVal, TryFromVal, Val, Vec};
 
 use crate::errors::Error;
 use crate::types::{
-    Bounty, ClaimRecord, Config, DataKey, DisputeRecord, PendingUpgrade, RelayerLimit,
-    RelayerUsage, TokenLimits, Totals,
+    Bounty, BountyState, BountyTerms, ClaimRecord, Config, DataKey, DisputeRecord, PendingUpgrade,
+    RelayerLimit, RelayerUsage, TokenLimits, Totals,
 };
 
 // Ledgers close about every 5 s: 17_280 per day. Testnet max entry TTL is
@@ -28,10 +28,9 @@ pub fn get_bounties(env: &Env, start: u64, limit: u32) -> Vec<Bounty> {
     let max_id: u64 = env.storage().instance().get(&DataKey::NextId).unwrap_or(1);
     let mut id = start;
     while id < max_id && list.len() < capped_limit {
-        let key = DataKey::Bounty(id);
-        if let Some(b) = env.storage().persistent().get::<DataKey, Bounty>(&key) {
+        if let Some(b) = peek_bounty(env, id) {
             if !b.status.is_terminal() {
-                bump_persistent(env, &key);
+                bump_bounty(env, id);
             }
             list.push_back(b);
         }
@@ -139,14 +138,85 @@ fn write_persistent<T: IntoVal<Env, Val>>(env: &Env, key: &DataKey, value: &T) {
     bump_persistent(env, key);
 }
 
-pub fn get_bounty(env: &Env, id: u64) -> Result<Bounty, Error> {
-    let key = DataKey::Bounty(id);
-    read_persistent(env, &key, true).ok_or(Error::BountyNotFound)
+/// Reads a bounty from its terms and state entries. Storage getters return
+/// `Option`; entry points map absence to domain errors.
+fn read_bounty(env: &Env, id: u64, refresh_ttl: bool) -> Option<Bounty> {
+    let terms: BountyTerms = read_persistent(env, &DataKey::BountyTerms(id), refresh_ttl)?;
+    let state: BountyState = read_persistent(env, &DataKey::BountyState(id), refresh_ttl)?;
+    Some(Bounty {
+        id: terms.id,
+        maintainer: terms.maintainer,
+        repo_id: terms.repo_id,
+        issue: terms.issue,
+        token: terms.token,
+        amount: terms.amount,
+        fee_bps: terms.fee_bps,
+        grace_secs: terms.grace_secs,
+        deadline: terms.deadline,
+        relayer_allowed: terms.relayer_allowed,
+        status: state.status,
+        winner: state.winner,
+    })
 }
 
+pub fn get_bounty(env: &Env, id: u64) -> Option<Bounty> {
+    read_bounty(env, id, true)
+}
+
+/// Reads a bounty without extending any TTL.
+pub fn peek_bounty(env: &Env, id: u64) -> Option<Bounty> {
+    read_bounty(env, id, false)
+}
+
+/// Extends both entries of a bounty using the normal TTL policy.
+pub fn bump_bounty(env: &Env, id: u64) {
+    bump_persistent(env, &DataKey::BountyTerms(id));
+    bump_persistent(env, &DataKey::BountyState(id));
+}
+
+/// Extends both entries of a bounty to the maximum TTL.
+pub fn bump_bounty_max(env: &Env, id: u64) {
+    bump_persistent_max(env, &DataKey::BountyTerms(id));
+    bump_persistent_max(env, &DataKey::BountyState(id));
+}
+
+/// Writes both terms and state. Use when terms change (funding, deadline, amount).
 pub fn set_bounty(env: &Env, b: &Bounty) {
-    let key = DataKey::Bounty(b.id);
-    write_persistent(env, &key, b);
+    write_persistent(
+        env,
+        &DataKey::BountyTerms(b.id),
+        &BountyTerms {
+            id: b.id,
+            maintainer: b.maintainer.clone(),
+            repo_id: b.repo_id,
+            issue: b.issue,
+            token: b.token.clone(),
+            amount: b.amount,
+            fee_bps: b.fee_bps,
+            grace_secs: b.grace_secs,
+            deadline: b.deadline,
+            relayer_allowed: b.relayer_allowed,
+        },
+    );
+    set_bounty_state(env, b);
+}
+
+/// Writes only status and winner, for transitions that leave the terms unchanged.
+pub fn set_bounty_state(env: &Env, b: &Bounty) {
+    write_persistent(
+        env,
+        &DataKey::BountyState(b.id),
+        &BountyState {
+            status: b.status,
+            winner: b.winner.clone(),
+        },
+    );
+}
+
+pub fn get_bounty_by_issue(env: &Env, repo_id: u64, issue: u64) -> Option<Bounty> {
+    // Views must not extend TTL.
+    let id: u64 = read_persistent(env, &DataKey::ActiveByIssue(repo_id, issue), false)?;
+    peek_bounty(env, id)
 }
 
 pub fn active_bounty(env: &Env, repo_id: u64, issue: u64) -> Option<u64> {

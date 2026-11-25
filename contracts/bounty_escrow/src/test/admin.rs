@@ -80,8 +80,8 @@ fn init_validates() {
             min_duration_secs: 1,
             max_duration_secs: 2,
         })
-            .unwrap_err()
-            .unwrap(),
+        .unwrap_err()
+        .unwrap(),
         Error::InvalidFee
     );
     assert_eq!(
@@ -95,8 +95,8 @@ fn init_validates() {
             min_duration_secs: 5,
             max_duration_secs: 2,
         })
-            .unwrap_err()
-            .unwrap(),
+        .unwrap_err()
+        .unwrap(),
         Error::InvalidDeadline
     );
     assert_eq!(
@@ -444,9 +444,15 @@ fn set_durations_boundaries_and_existing_bounty_isolation() {
     assert_eq!(c.client.get_bounty(&exact_id).deadline, c.now() + exact);
 
     // Existing bounty is unaffected and still settles normally.
-    assert_eq!(c.client.get_bounty(&existing_id).deadline, existing_deadline);
+    assert_eq!(
+        c.client.get_bounty(&existing_id).deadline,
+        existing_deadline
+    );
     c.client.release(&c.maintainer, &existing_id, &c.winner);
-    assert_eq!(c.client.get_bounty(&existing_id).status, crate::Status::Released);
+    assert_eq!(
+        c.client.get_bounty(&existing_id).status,
+        crate::Status::Released
+    );
     c.assert_invariant(&c.token);
 }
 
@@ -520,7 +526,10 @@ fn pause_and_unpause_are_idempotent_and_emit_events() {
     let all = c.env.events().all();
     assert_eq!(all.events().len(), 1);
     assert_eq!(
-        all.events().iter().filter(|e| *e == &unpaused_event).count(),
+        all.events()
+            .iter()
+            .filter(|e| *e == &unpaused_event)
+            .count(),
         1
     );
     assert!(!c.client.get_config().paused);
@@ -550,7 +559,10 @@ fn pause_and_unpause_are_idempotent_and_emit_events() {
     let all = c.env.events().all();
     assert_eq!(all.events().len(), 1);
     assert_eq!(
-        all.events().iter().filter(|e| *e == &unpaused_event).count(),
+        all.events()
+            .iter()
+            .filter(|e| *e == &unpaused_event)
+            .count(),
         1
     );
     assert!(!c.client.get_config().paused);
@@ -560,7 +572,10 @@ fn pause_and_unpause_are_idempotent_and_emit_events() {
     let all = c.env.events().all();
     assert_eq!(all.events().len(), 1);
     assert_eq!(
-        all.events().iter().filter(|e| *e == &unpaused_event).count(),
+        all.events()
+            .iter()
+            .filter(|e| *e == &unpaused_event)
+            .count(),
         1
     );
     assert!(!c.client.get_config().paused);
@@ -590,10 +605,7 @@ fn upgrade_swaps_the_code_and_keeps_state() {
     c.client
         .resolve(&c.arbiter, &disputed_id, &Some(c.winner.clone()), &10_000);
     assert_eq!(c.client.get_bounty(&open_id).status, Status::Released);
-    assert_eq!(
-        c.client.get_bounty(&disputed_id).status,
-        Status::Resolved
-    );
+    assert_eq!(c.client.get_bounty(&disputed_id).status, Status::Resolved);
     c.assert_invariant(&c.token);
 }
 
@@ -835,15 +847,10 @@ fn all_state_changing_entry_points_before_init_return_not_initialized() {
             .unwrap_err()
             .unwrap(),
         ),
-        (
-            "release",
-            cl.try_release(&a, &1, &b).unwrap_err().unwrap(),
-        ),
+        ("release", cl.try_release(&a, &1, &b).unwrap_err().unwrap()),
         (
             "release_split",
-            cl.try_release_split(&a, &1, &winners)
-                .unwrap_err()
-                .unwrap(),
+            cl.try_release_split(&a, &1, &winners).unwrap_err().unwrap(),
         ),
         ("refund", cl.try_refund(&a, &1).unwrap_err().unwrap()),
         (
@@ -868,10 +875,7 @@ fn all_state_changing_entry_points_before_init_return_not_initialized() {
                 .unwrap_err()
                 .unwrap(),
         ),
-        (
-            "top_up",
-            cl.try_top_up(&a, &1, &UNIT).unwrap_err().unwrap(),
-        ),
+        ("top_up", cl.try_top_up(&a, &1, &UNIT).unwrap_err().unwrap()),
         (
             "expire_dispute",
             cl.try_expire_dispute(&a, &1).unwrap_err().unwrap(),

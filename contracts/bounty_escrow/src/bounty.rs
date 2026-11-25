@@ -87,7 +87,7 @@ pub(crate) fn release(
 ) -> Result<ReleaseSettlement, Error> {
     caller.require_auth();
     let cfg = storage::get_config(&env)?;
-    let mut b = storage::get_bounty(&env, bounty_id)?;
+    let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
     if b.status != Status::Open {
         return Err(Error::InvalidStatus);
     }
@@ -147,7 +147,7 @@ pub(crate) fn release_split(
 ) -> Result<(), Error> {
     caller.require_auth();
     let cfg = storage::get_config(&env)?;
-    let mut b = storage::get_bounty(&env, bounty_id)?;
+    let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
     if b.status != Status::Open {
         return Err(Error::InvalidStatus);
     }
@@ -229,7 +229,7 @@ pub(crate) fn refund(
 ) -> Result<RefundSettlement, Error> {
     maintainer.require_auth();
     storage::get_config(&env)?;
-    let mut b = storage::get_bounty(&env, bounty_id)?;
+    let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
     if maintainer != b.maintainer {
         return Err(Error::Unauthorized);
     }
@@ -263,7 +263,7 @@ pub(crate) fn refund(
 }
 
 pub(crate) fn refundable_at(env: Env, bounty_id: u64) -> Result<u64, Error> {
-    let bounty = storage::get_bounty(&env, bounty_id)?;
+    let bounty = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
     // #163: use the grace snapshotted at funding time.
     bounty
         .deadline
@@ -274,7 +274,7 @@ pub(crate) fn refundable_at(env: Env, bounty_id: u64) -> Result<u64, Error> {
 pub(crate) fn open_dispute(env: Env, caller: Address, bounty_id: u64) -> Result<(), Error> {
     caller.require_auth();
     let cfg = storage::get_config(&env)?;
-    let mut b = storage::get_bounty(&env, bounty_id)?;
+    let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
     if caller != b.maintainer && caller != cfg.arbiter {
         return Err(Error::Unauthorized);
     }
@@ -293,7 +293,7 @@ pub(crate) fn open_dispute(env: Env, caller: Address, bounty_id: u64) -> Result<
         },
     );
     b.status = Status::Disputed;
-    storage::set_bounty(&env, &b);
+    storage::set_bounty_state(&env, &b);
     events::Disputed {
         id: bounty_id,
         caller,
@@ -338,7 +338,7 @@ pub(crate) fn extend_deadline(
 ) -> Result<(), Error> {
     maintainer.require_auth();
     let cfg = storage::get_config(&env)?;
-    let mut b = storage::get_bounty(&env, bounty_id)?;
+    let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
     if maintainer != b.maintainer {
         return Err(Error::Unauthorized);
     }
@@ -379,7 +379,7 @@ pub(crate) fn top_up(
     if cfg.paused {
         return Err(Error::Paused);
     }
-    let mut b = storage::get_bounty(&env, bounty_id)?;
+    let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
     if maintainer != b.maintainer {
         return Err(Error::Unauthorized);
     }
@@ -425,7 +425,7 @@ pub(crate) fn top_up(
 pub(crate) fn expire_dispute(env: Env, caller: Address, bounty_id: u64) -> Result<(), Error> {
     caller.require_auth();
     storage::get_config(&env)?;
-    let mut b = storage::get_bounty(&env, bounty_id)?;
+    let mut b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
     if b.status != Status::Disputed {
         return Err(Error::InvalidStatus);
     }
@@ -438,7 +438,7 @@ pub(crate) fn expire_dispute(env: Env, caller: Address, bounty_id: u64) -> Resul
         return Err(Error::DisputeNotExpired);
     }
     b.status = Status::Open;
-    storage::set_bounty(&env, &b);
+    storage::set_bounty_state(&env, &b);
     events::DisputeExpired { id: bounty_id }.publish(&env);
     Ok(())
 }
@@ -453,7 +453,7 @@ pub(crate) fn claim(env: Env, winner: Address, bounty_id: u64) -> Result<(), Err
     if record.winner != winner {
         return Err(Error::Unauthorized);
     }
-    let b = storage::get_bounty(&env, bounty_id)?;
+    let b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
     record.claimed = true;
     storage::set_claim(&env, bounty_id, &record);
     undefer(&env, &b.token, record.net)?;
@@ -476,7 +476,12 @@ pub(crate) fn claim(env: Env, winner: Address, bounty_id: u64) -> Result<(), Err
 }
 
 pub(crate) fn get_bounty(env: Env, id: u64) -> Result<Bounty, Error> {
-    storage::get_bounty(&env, id)
+    storage::get_bounty(&env, id).ok_or(Error::BountyNotFound)
+}
+
+/// Returns the active bounty for an issue without extending any storage TTL.
+pub(crate) fn get_bounty_by_issue(env: Env, repo_id: u64, issue: u64) -> Option<Bounty> {
+    storage::get_bounty_by_issue(&env, repo_id, issue)
 }
 
 pub(crate) fn active_bounty(env: Env, repo_id: u64, issue: u64) -> Option<u64> {
@@ -508,7 +513,7 @@ pub(crate) fn get_bounties(env: Env, start: u64, limit: u32) -> Vec<Bounty> {
 }
 
 pub(crate) fn quote_release(env: Env, bounty_id: u64) -> Result<(i128, i128), Error> {
-    let b = storage::get_bounty(&env, bounty_id)?;
+    let b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
     let fee = fees::fee(b.amount, b.fee_bps)?;
     let net = fees::net(b.amount, b.fee_bps)?;
     Ok((net, fee))
@@ -519,7 +524,7 @@ pub(crate) fn quote_resolve(
     bounty_id: u64,
     winner_bps: u32,
 ) -> Result<(i128, i128, i128), Error> {
-    let b = storage::get_bounty(&env, bounty_id)?;
+    let b = storage::get_bounty(&env, bounty_id).ok_or(Error::BountyNotFound)?;
     if winner_bps > 10_000 {
         return Err(Error::InvalidSplit);
     }
@@ -552,10 +557,9 @@ pub(crate) fn bump(env: Env, bounty_ids: Vec<u64>) -> Result<(), Error> {
         return Err(Error::AmountTooLarge);
     }
     for id in bounty_ids.iter() {
-        let key = DataKey::Bounty(id);
-        if let Some(b) = env.storage().persistent().get::<DataKey, Bounty>(&key) {
+        if let Some(b) = storage::peek_bounty(&env, id) {
             if !b.status.is_terminal() {
-                storage::bump_persistent_max(&env, &key);
+                storage::bump_bounty_max(&env, id);
                 let active_key = DataKey::ActiveByIssue(b.repo_id, b.issue);
                 if env.storage().persistent().has(&active_key) {
                     storage::bump_persistent_max(&env, &active_key);
