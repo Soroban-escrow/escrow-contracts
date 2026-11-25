@@ -370,6 +370,87 @@ fn setters_update_config() {
 }
 
 #[test]
+fn set_durations_boundaries_and_existing_bounty_isolation() {
+    let c = Ctx::new();
+    let existing_id = c.fund(1);
+    let existing_deadline = c.client.get_bounty(&existing_id).deadline;
+
+    // min > max is rejected.
+    assert_eq!(
+        c.client
+            .try_set_durations(&c.admin, &(5 * DAY), &(4 * DAY))
+            .unwrap_err()
+            .unwrap(),
+        Error::InvalidDeadline
+    );
+
+    // min == 0, max == 0 is accepted and requires deadline == now.
+    c.client.set_durations(&c.admin, &0, &0);
+    assert_eq!(
+        c.client
+            .try_fund_bounty(&crate::FundBountyParams {
+                maintainer: c.maintainer.clone(),
+                repo_id: REPO,
+                issue: 2,
+                token: c.token.clone(),
+                amount: UNIT,
+                deadline: c.now() + 1,
+                relayer_allowed: true,
+            })
+            .unwrap_err()
+            .unwrap(),
+        Error::InvalidDeadline
+    );
+    let zero_id = c.client.fund_bounty(&crate::FundBountyParams {
+        maintainer: c.maintainer.clone(),
+        repo_id: REPO,
+        issue: 2,
+        token: c.token.clone(),
+        amount: UNIT,
+        deadline: c.now(),
+        relayer_allowed: true,
+    });
+    assert_eq!(c.client.get_bounty(&zero_id).deadline, c.now());
+
+    // min == max (non-zero) is accepted and requires that exact deadline.
+    let exact = 5 * DAY;
+    c.client.set_durations(&c.admin, &exact, &exact);
+    for bad in [c.now() + exact - 1, c.now() + exact + 1] {
+        assert_eq!(
+            c.client
+                .try_fund_bounty(&crate::FundBountyParams {
+                    maintainer: c.maintainer.clone(),
+                    repo_id: REPO,
+                    issue: 3,
+                    token: c.token.clone(),
+                    amount: UNIT,
+                    deadline: bad,
+                    relayer_allowed: true,
+                })
+                .unwrap_err()
+                .unwrap(),
+            Error::InvalidDeadline
+        );
+    }
+    let exact_id = c.client.fund_bounty(&crate::FundBountyParams {
+        maintainer: c.maintainer.clone(),
+        repo_id: REPO,
+        issue: 3,
+        token: c.token.clone(),
+        amount: UNIT,
+        deadline: c.now() + exact,
+        relayer_allowed: true,
+    });
+    assert_eq!(c.client.get_bounty(&exact_id).deadline, c.now() + exact);
+
+    // Existing bounty is unaffected and still settles normally.
+    assert_eq!(c.client.get_bounty(&existing_id).deadline, existing_deadline);
+    c.client.release(&c.maintainer, &existing_id, &c.winner);
+    assert_eq!(c.client.get_bounty(&existing_id).status, crate::Status::Released);
+    c.assert_invariant(&c.token);
+}
+
+#[test]
 fn all_setters_require_admin() {
     let c = Ctx::new();
     let x = Address::generate(&c.env);

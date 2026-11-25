@@ -1,4 +1,4 @@
-use soroban_sdk::{testutils::Address as _, Address, Vec as SVec};
+use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address, Vec as SVec};
 
 use super::setup::*;
 use crate::{Error, Status, WinnerShare};
@@ -347,4 +347,28 @@ fn release_at_max_fee_pays_ninety_percent_and_accrues_ten_percent() {
     assert_eq!(c.bal(&c.token, &c.winner), 90 * UNIT);
     assert_eq!(c.client.get_totals(&c.token).accrued_fees, 10 * UNIT);
     c.assert_invariant(&c.token);
+}
+
+#[test]
+fn claim_without_deferred_payout_returns_nothing_to_claim() {
+    let c = Ctx::new();
+    let id = c.fund(1);
+    let r = c.client.try_claim(&c.winner, &id);
+    assert_eq!(r.unwrap_err().unwrap(), Error::NothingToClaim);
+}
+
+#[test]
+fn deferred_claim_succeeds_once_and_rejects_second_claim() {
+    let c = Ctx::new();
+    let id = c.fund(1);
+    StellarAssetClient::new(&c.env, &c.token).set_authorized(&c.winner, &false);
+    let settlement = c.client.release(&c.maintainer, &id, &c.winner);
+    assert!(settlement.deferred);
+
+    StellarAssetClient::new(&c.env, &c.token).set_authorized(&c.winner, &true);
+    c.client.claim(&c.winner, &id);
+    assert_eq!(c.bal(&c.token, &c.winner), 97 * UNIT);
+
+    let r = c.client.try_claim(&c.winner, &id);
+    assert_eq!(r.unwrap_err().unwrap(), Error::AlreadyClaimed);
 }

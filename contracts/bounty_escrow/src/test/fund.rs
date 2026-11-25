@@ -1,4 +1,4 @@
-use soroban_sdk::{testutils::Address as _, Address};
+use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, Address};
 
 use super::setup::*;
 use crate::{Error, Status};
@@ -217,6 +217,51 @@ fn bounty_count_tracks_created_bounties() {
     assert_eq!(c.client.bounty_count(), 2);
     c.fund(3);
     assert_eq!(c.client.bounty_count(), 3);
+}
+
+#[test]
+fn totals_overflow_on_second_fund_moves_no_tokens() {
+    let c = Ctx::new();
+    c.client
+        .set_token(&c.admin, &c.token, &UNIT, &i128::MAX, &None);
+    // Ctx::new already minted 10_000 * UNIT to maintainer; top up to i128::MAX.
+    let existing = c.bal(&c.token, &c.maintainer);
+    StellarAssetClient::new(&c.env, &c.token).mint(&c.maintainer, &(i128::MAX - existing));
+
+    let first = i128::MAX - 10 * UNIT;
+    c.fund_with(1, first, true);
+
+    let maintainer_before = c.bal(&c.token, &c.maintainer);
+    let contract_before = c.contract_bal(&c.token);
+    let totals_before = c.client.get_totals(&c.token);
+
+    let second = 11 * UNIT;
+    let r = c.client.try_fund_bounty(&crate::FundBountyParams {
+        maintainer: c.maintainer.clone(),
+        repo_id: REPO,
+        issue: 2,
+        token: c.token.clone(),
+        amount: second,
+        deadline: c.now() + 2 * DAY,
+        relayer_allowed: true,
+    });
+    assert_eq!(r.unwrap_err().unwrap(), Error::Overflow);
+    assert_eq!(c.bal(&c.token, &c.maintainer), maintainer_before);
+    assert_eq!(c.contract_bal(&c.token), contract_before);
+    assert_eq!(c.client.get_totals(&c.token), totals_before);
+    assert_eq!(c.client.active_bounty(&REPO, &2), None);
+    c.assert_invariant(&c.token);
+}
+
+#[test]
+fn top_up_limit_reached_on_eleventh_top_up() {
+    let c = Ctx::new();
+    let id = c.fund(1);
+    for _ in 0..10 {
+        c.client.top_up(&c.maintainer, &id, &UNIT);
+    }
+    let r = c.client.try_top_up(&c.maintainer, &id, &UNIT);
+    assert_eq!(r.unwrap_err().unwrap(), Error::TopUpLimitReached);
 }
 
 // ── Deadline window property test (#106) ─────────────────────────────────────

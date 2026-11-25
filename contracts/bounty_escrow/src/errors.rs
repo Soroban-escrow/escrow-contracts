@@ -208,6 +208,7 @@ pub enum Error {
     /// Code: 29
     /// Entry points: `fund_bounty`
     /// Recovery: Validate GitHub repository ID and issue number inputs; ensure positive non-zero integers.
+    /// Note: Currently unreachable in contract code; retained for ABI stability (see `test::errors::every_error_variant_is_mapped_to_a_test`).
     InvalidKey = 29,
 
     /// A contract address was provided where a standard user account address is required.
@@ -215,6 +216,7 @@ pub enum Error {
     /// Code: 30
     /// Entry points: Address validation checks
     /// Recovery: Prompt user to enter a standard Stellar account address (G...) rather than a contract address (C...).
+    /// Note: Currently unreachable in contract code; retained for ABI stability (see `test::errors::every_error_variant_is_mapped_to_a_test`).
     ContractAddressRejected = 30,
 
     /// Configured token limits are invalid (`min <= 0` or `max < min`).

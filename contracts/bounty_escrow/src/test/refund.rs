@@ -96,6 +96,16 @@ fn refund_blocked_while_disputed() {
     assert_eq!(r.unwrap_err().unwrap(), Error::InvalidStatus);
 }
 
+#[test]
+fn refund_blocked_when_dispute_opened_after_refund_window() {
+    let c = Ctx::new();
+    let id = c.fund(1);
+    c.set_time(c.client.refundable_at(&id) + 1);
+    c.client.open_dispute(&c.arbiter, &id);
+    let r = c.client.try_refund(&c.maintainer, &id);
+    assert_eq!(r.unwrap_err().unwrap(), Error::InvalidStatus);
+}
+
 /// #100: one maintainer's authority must never reach another maintainer's
 /// bounty. `Error::Unauthorized` on refund, with no effect on B's balance or
 /// bounty A's status.

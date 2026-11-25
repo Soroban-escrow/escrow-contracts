@@ -319,3 +319,45 @@ fn remove_token_during_dispute_refund_path_returns_funds() {
     assert_eq!(c.contract_bal(&c.token), 0);
     c.assert_invariant(&c.token);
 }
+
+#[test]
+fn expire_dispute_before_timeout_and_reopen_rejected() {
+    let c = Ctx::new();
+    let id = disputed(&c);
+    let timeout = c.client.get_dispute_timeout();
+    c.set_time(c.now() + timeout - 1);
+    let r = c.client.try_expire_dispute(&c.maintainer, &id);
+    assert_eq!(r.unwrap_err().unwrap(), Error::DisputeNotExpired);
+
+    c.set_time(c.now() + 1);
+    c.client.expire_dispute(&c.maintainer, &id);
+    assert_eq!(c.client.get_bounty(&id).status, Status::Open);
+
+    let r2 = c.client.try_open_dispute(&c.maintainer, &id);
+    assert_eq!(r2.unwrap_err().unwrap(), Error::DisputeAlreadyUsed);
+}
+
+#[test]
+fn dispute_opened_after_refund_window_blocks_refund_and_resolves() {
+    let c = Ctx::new();
+    let id = c.fund(1);
+
+    // Advance past deadline + grace so the refund window is already open.
+    c.set_time(c.client.refundable_at(&id) + 1);
+    c.client.open_dispute(&c.arbiter, &id);
+    assert_eq!(c.client.get_bounty(&id).status, Status::Disputed);
+
+    let r = c.client.try_refund(&c.maintainer, &id);
+    assert_eq!(r.unwrap_err().unwrap(), Error::InvalidStatus);
+
+    let settlement = c
+        .client
+        .resolve(&c.arbiter, &id, &Some(c.winner.clone()), &10_000);
+    assert_eq!(settlement.winner_net, 97 * UNIT);
+    assert_eq!(settlement.fee, 3 * UNIT);
+    assert_eq!(c.bal(&c.token, &c.winner), 97 * UNIT);
+    assert_eq!(c.client.get_totals(&c.token).accrued_fees, 3 * UNIT);
+    assert_eq!(c.client.get_bounty(&id).status, Status::Resolved);
+    assert_eq!(c.client.active_bounty(&REPO, &1), None);
+    c.assert_invariant(&c.token);
+}
